@@ -4,11 +4,13 @@ import { dirname, join, resolve, sep } from 'path'
 import { mkdir, readFile, rm, symlink, writeFile } from 'fs/promises'
 import { parse } from 'yaml'
 import type {
+  AgentUpdateRequest,
   AgentId,
   InstallRequest,
   InstalledSkill,
   OperationResult,
   RemoveRequest,
+  SettingsInfo,
   SkillPreview
 } from '../shared/skills-types'
 
@@ -88,6 +90,17 @@ export class SkillsService {
       }))
   }
 
+  getSettingsInfo(): SettingsInfo {
+    return {
+      appDataPath: this.getUserDataPath(),
+      agents: (Object.entries(AGENTS) as Array<[AgentId, (typeof AGENTS)[AgentId]]>).map(([id, agent]) => ({
+        id,
+        label: agent.displayName,
+        skillsPath: agent.dir()
+      }))
+    }
+  }
+
   async previewGitHubSource(source: string): Promise<SkillPreview[]> {
     const sourceInfo = await this.resolveSource(source)
     const tree = await this.fetchTree(sourceInfo)
@@ -146,6 +159,32 @@ export class SkillsService {
     }
   }
 
+  async addAgents(request: AgentUpdateRequest): Promise<OperationResult> {
+    const lock = await this.readLock()
+    const logs: string[] = []
+
+    for (const name of request.names) {
+      const skillName = sanitizeName(name)
+      const entry = lock.skills[skillName]
+
+      if (!entry) {
+        logs.push(`Skipped ${name}: not installed by this app.`)
+        continue
+      }
+
+      for (const agent of request.agents) {
+        await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), skillName))
+        logs.push(`Linked ${entry.name} for ${AGENTS[agent].displayName}.`)
+      }
+
+      entry.agents = Array.from(new Set([...entry.agents, ...request.agents]))
+      entry.updatedAt = new Date().toISOString()
+    }
+
+    await this.writeLock(lock)
+    return { ok: true, logs }
+  }
+
   async update(names: string[]): Promise<OperationResult> {
     const lock = await this.readLock()
     const logs: string[] = []
@@ -180,10 +219,7 @@ export class SkillsService {
 
       await this.writeSkillFolder(sourceInfo, tree, preview, entry.storagePath)
       for (const agent of entry.agents) {
-        await this.linkOrCopy(
-          entry.storagePath,
-          join(AGENTS[agent].dir(), sanitizeName(entry.name))
-        )
+        await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), sanitizeName(entry.name)))
       }
 
       entry.folderSha = preview.folderSha
@@ -262,9 +298,7 @@ export class SkillsService {
     let ref: string | undefined
     let subpath: string | undefined
 
-    const urlMatch = trimmed.match(
-      /^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?\/?$/
-    )
+    const urlMatch = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?\/?$/)
     const shorthandMatch = trimmed.match(/^([^/]+)\/([^/]+)$/)
 
     if (urlMatch) {
@@ -278,9 +312,7 @@ export class SkillsService {
     }
 
     if (!owner || !repo) {
-      throw new Error(
-        'Only public GitHub repositories are supported. Use owner/repo or a github.com URL.'
-      )
+      throw new Error('Only public GitHub repositories are supported. Use owner/repo or a github.com URL.')
     }
 
     if (!ref) ref = await this.fetchDefaultBranch(owner, repo)
@@ -323,17 +355,10 @@ export class SkillsService {
     return previews
   }
 
-  private async writeSkillFolder(
-    source: SourceInfo,
-    tree: GitHubTree,
-    skill: SkillPreview,
-    storagePath: string
-  ): Promise<void> {
+  private async writeSkillFolder(source: SourceInfo, tree: GitHubTree, skill: SkillPreview, storagePath: string): Promise<void> {
     const skillDir = dirname(skill.skillPath)
     const prefix = skillDir === '.' ? '' : `${skillDir}/`
-    const files = tree.tree.filter(
-      (entry) => entry.type === 'blob' && (prefix ? entry.path.startsWith(prefix) : true)
-    )
+    const files = tree.tree.filter((entry) => entry.type === 'blob' && (prefix ? entry.path.startsWith(prefix) : true))
 
     await rm(storagePath, { recursive: true, force: true })
     await mkdir(storagePath, { recursive: true })
@@ -341,8 +366,7 @@ export class SkillsService {
     for (const file of files) {
       const relativePath = prefix ? file.path.slice(prefix.length) : file.path
       const targetPath = join(storagePath, relativePath)
-      if (!isInside(storagePath, targetPath))
-        throw new Error(`Unsafe file path from GitHub: ${file.path}`)
+      if (!isInside(storagePath, targetPath)) throw new Error(`Unsafe file path from GitHub: ${file.path}`)
 
       const content = await this.fetchRawFile(source, file.path)
       await mkdir(dirname(targetPath), { recursive: true })
@@ -369,9 +393,7 @@ export class SkillsService {
   private getSkillFolderSha(tree: GitHubTree, skillPath: string): string | null {
     const folderPath = dirname(skillPath)
     if (folderPath === '.') return tree.sha
-    return (
-      tree.tree.find((entry) => entry.type === 'tree' && entry.path === folderPath)?.sha || null
-    )
+    return tree.tree.find((entry) => entry.type === 'tree' && entry.path === folderPath)?.sha || null
   }
 
   private async linkOrCopy(storagePath: string, linkedPath: string): Promise<void> {
@@ -391,9 +413,7 @@ function createEmptyLock(): LockFile {
 }
 
 function findSkillMdPaths(tree: TreeEntry[], subpath?: string): string[] {
-  const allSkillMds = tree
-    .filter((entry) => entry.type === 'blob' && entry.path.toLowerCase().endsWith('skill.md'))
-    .map((entry) => entry.path)
+  const allSkillMds = tree.filter((entry) => entry.type === 'blob' && entry.path.toLowerCase().endsWith('skill.md')).map((entry) => entry.path)
   const prefix = subpath ? (subpath.endsWith('/') ? subpath : `${subpath}/`) : ''
   const filtered = prefix ? allSkillMds.filter((path) => path.startsWith(prefix)) : allSkillMds
   const results: string[] = []
@@ -409,10 +429,7 @@ function findSkillMdPaths(tree: TreeEntry[], subpath?: string): string[] {
       const rest = skillMd.slice(fullPrefix.length)
       const parts = rest.split('/')
 
-      if (
-        rest.toLowerCase() === 'skill.md' ||
-        (parts.length === 2 && parts[1].toLowerCase() === 'skill.md')
-      ) {
+      if (rest.toLowerCase() === 'skill.md' || (parts.length === 2 && parts[1].toLowerCase() === 'skill.md')) {
         if (!seen.has(skillMd)) {
           results.push(skillMd)
           seen.add(skillMd)
@@ -420,13 +437,7 @@ function findSkillMdPaths(tree: TreeEntry[], subpath?: string): string[] {
         continue
       }
 
-      if (
-        isContainer &&
-        parts.length === 3 &&
-        parts[2].toLowerCase() === 'skill.md' &&
-        !SKIP_DIRS.has(parts[0]) &&
-        !SKIP_DIRS.has(parts[1])
-      ) {
+      if (isContainer && parts.length === 3 && parts[2].toLowerCase() === 'skill.md' && !SKIP_DIRS.has(parts[0]) && !SKIP_DIRS.has(parts[1])) {
         const parentSkillMd = `${fullPrefix}${parts[0]}/SKILL.md`.toLowerCase()
         if (!lowerSkillMdSet.has(parentSkillMd) && !seen.has(skillMd)) {
           results.push(skillMd)

@@ -21,9 +21,23 @@ export type InstallRequest = {
   agents: AgentId[]
 }
 
+export type AgentUpdateRequest = {
+  names: string[]
+  agents: AgentId[]
+}
+
 export type RemoveRequest = {
   names: string[]
   agents: AgentId[]
+}
+
+export type SettingsInfo = {
+  appDataPath: string
+  agents: Array<{
+    id: AgentId
+    label: string
+    skillsPath: string
+  }>
 }
 
 export type OperationResult = {

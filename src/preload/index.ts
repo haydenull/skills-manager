@@ -1,14 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { InstallRequest, RemoveRequest } from '../shared/skills-types'
+import type { AgentUpdateRequest, InstallRequest, RemoveRequest } from '../shared/skills-types'
 
 // Custom APIs for renderer
 const api = {
   skills: {
     listGlobal: () => ipcRenderer.invoke('skills:list-global'),
-    previewGitHubSource: (source: string) =>
-      ipcRenderer.invoke('skills:preview-github-source', source),
+    getSettingsInfo: () => ipcRenderer.invoke('skills:get-settings-info'),
+    previewGitHubSource: (source: string) => ipcRenderer.invoke('skills:preview-github-source', source),
     install: (request: InstallRequest) => ipcRenderer.invoke('skills:install', request),
+    addAgents: (request: AgentUpdateRequest) => ipcRenderer.invoke('skills:add-agents', request),
     update: (names: string[]) => ipcRenderer.invoke('skills:update', names),
     remove: (request: RemoveRequest) => ipcRenderer.invoke('skills:remove', request)
   }

@@ -53,10 +53,10 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('skills:list-global', () => skillsService.listGlobal())
-  ipcMain.handle('skills:preview-github-source', (_event, source: string) =>
-    skillsService.previewGitHubSource(source)
-  )
+  ipcMain.handle('skills:get-settings-info', () => skillsService.getSettingsInfo())
+  ipcMain.handle('skills:preview-github-source', (_event, source: string) => skillsService.previewGitHubSource(source))
   ipcMain.handle('skills:install', (_event, request) => skillsService.install(request))
+  ipcMain.handle('skills:add-agents', (_event, request) => skillsService.addAgents(request))
   ipcMain.handle('skills:update', (_event, names: string[]) => skillsService.update(names))
   ipcMain.handle('skills:remove', (_event, request) => skillsService.remove(request))
 
