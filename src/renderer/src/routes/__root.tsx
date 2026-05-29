@@ -1,4 +1,5 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
+import { useTheme } from '@heroui/react'
 import { RiAddCircleLine, RiDashboardLine, RiSettings3Line } from '@remixicon/react'
 
 const NAV_ITEMS = [
@@ -12,13 +13,15 @@ export const Route = createRootRoute({
 })
 
 function RootLayout(): React.JSX.Element {
+  useTheme('dark')
+
   return (
-    <main className="min-h-screen bg-[#0b0d12] text-zinc-100">
+    <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-6 py-6">
-        <header className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-900/80 px-5 py-4">
+        <header className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface px-5 py-4 shadow-surface">
           <div>
             <h1 className="text-2xl font-semibold">Skills Manager</h1>
-            <p className="mt-1 text-sm text-zinc-400">统一管理 Claude Code 与 Codex 的全局技能。</p>
+            <p className="mt-1 text-sm text-muted">统一管理 Claude Code 与 Codex 的全局技能。</p>
           </div>
           <nav className="flex flex-wrap gap-2">
             {NAV_ITEMS.map((item) => {
@@ -27,9 +30,10 @@ function RootLayout(): React.JSX.Element {
                 <Link
                   key={item.to}
                   to={item.to}
-                  className="inline-flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800/60"
+                  className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-secondary hover:bg-surface-hover"
                   activeProps={{
-                    className: 'inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100'
+                    className:
+                      'inline-flex items-center gap-2 rounded-md border border-accent/40 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground'
                   }}
                 >
                   <Icon size={16} />
