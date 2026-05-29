@@ -40,38 +40,14 @@ skills-manager 是面向 Claude Code 与 Codex 用户的桌面端 skills 管理�
 - `pnpm dev`
   启动 Electron Vite 开发环境。
 
-- `pnpm start`
-  使用 `electron-vite preview` 预览构建后的应用。
-
 - `pnpm lint`
   使用 ESLint 检查仓库代码，启用缓存。
-
-- `pnpm format`
-  使用 Prettier 格式化整个仓库。
 
 - `pnpm typecheck`
   同时执行 Node 与 Web TypeScript 类型检查。
 
-- `pnpm typecheck:node`
-  检查 `electron.vite.config.*`、`src/main/`、`src/preload/`、`src/shared/`。
-
-- `pnpm typecheck:web`
-  检查 `src/renderer/src/`、preload 声明和 `src/shared/`。
-
 - `pnpm build`
   类型检查通过后执行 `electron-vite build`。
-
-- `pnpm build:unpack`
-  构建并生成未打包目录，适合本地检查产物。
-
-- `pnpm build:mac`
-  构建 macOS 包；当前配置 `notarize: false`。
-
-- `pnpm build:win`
-  构建 Windows 安装包。
-
-- `pnpm build:linux`
-  构建 AppImage、snap、deb 包。
 
 ## 5. 文档索引
 
