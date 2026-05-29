@@ -1,8 +1,15 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { mkdirSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { SkillsService } from './skills-service'
+
+if (process.env.SKILLS_MANAGER_LOCAL_DEBUG === '1') {
+  const userDataPath = join(process.cwd(), '.debug', 'userData')
+  mkdirSync(userDataPath, { recursive: true })
+  app.setPath('userData', userDataPath)
+}
 
 const skillsService = new SkillsService()
 

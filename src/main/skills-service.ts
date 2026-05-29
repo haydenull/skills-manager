@@ -1,7 +1,10 @@
 import { app } from 'electron'
-import { homedir } from 'os'
+import { execFile } from 'child_process'
+import { createHash } from 'crypto'
+import { homedir, tmpdir } from 'os'
 import { dirname, join, resolve, sep } from 'path'
-import { mkdir, readFile, rm, symlink, writeFile } from 'fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises'
+import { promisify } from 'util'
 import { parse } from 'yaml'
 import type {
   AgentUpdateRequest,
@@ -32,6 +35,16 @@ type GitHubTree = {
   tree: TreeEntry[]
 }
 
+type RepositorySnapshot =
+  | {
+      source: SourceInfo
+      tree: GitHubTree
+    }
+  | {
+      source: SourceInfo
+      rootPath: string
+    }
+
 type LockEntry = {
   name: string
   source: string
@@ -54,11 +67,11 @@ type LockFile = {
 const AGENTS: Record<AgentId, { displayName: string; dir: () => string }> = {
   'claude-code': {
     displayName: 'Claude Code',
-    dir: () => join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude'), 'skills')
+    dir: () => join(getAgentConfigDir('claude-code'), 'skills')
   },
   codex: {
     displayName: 'Codex',
-    dir: () => join(process.env.CODEX_HOME?.trim() || join(homedir(), '.codex'), 'skills')
+    dir: () => join(getAgentConfigDir('codex'), 'skills')
   }
 }
 
@@ -74,6 +87,22 @@ const PRIORITY_PREFIXES = [
 ]
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__'])
+const GITHUB_BRANCH_CANDIDATES = ['HEAD', 'main', 'master']
+const FETCH_TIMEOUT_MS = 10000
+const CLONE_TIMEOUT_MS = 300000
+const execFileAsync = promisify(execFile)
+
+function getAgentConfigDir(agent: AgentId): string {
+  if (process.env.SKILLS_MANAGER_LOCAL_DEBUG === '1') {
+    return join(process.cwd(), '.debug', agent === 'claude-code' ? 'claude' : 'codex')
+  }
+
+  if (agent === 'claude-code') {
+    return process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+  }
+
+  return process.env.CODEX_HOME?.trim() || join(homedir(), '.codex')
+}
 
 export class SkillsService {
   async listGlobal(): Promise<InstalledSkill[]> {
@@ -103,8 +132,7 @@ export class SkillsService {
 
   async previewGitHubSource(source: string): Promise<SkillPreview[]> {
     const sourceInfo = await this.resolveSource(source)
-    const tree = await this.fetchTree(sourceInfo)
-    return this.parseSkillsFromTree(sourceInfo, tree)
+    return this.withRepositorySnapshot(sourceInfo, (snapshot) => this.parseSkillsFromSnapshot(snapshot))
   }
 
   async install(request: InstallRequest): Promise<OperationResult> {
@@ -112,48 +140,49 @@ export class SkillsService {
 
     try {
       const sourceInfo = await this.resolveSource(request.source)
-      const tree = await this.fetchTree(sourceInfo)
-      const availableSkills = await this.parseSkillsFromTree(sourceInfo, tree)
-      const selectedPaths = new Set(request.skills.map((skill) => skill.skillPath))
-      const selectedSkills = availableSkills.filter((skill) => selectedPaths.has(skill.skillPath))
+      return await this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
+        const availableSkills = await this.parseSkillsFromSnapshot(snapshot)
+        const selectedPaths = new Set(request.skills.map((skill) => skill.skillPath))
+        const selectedSkills = availableSkills.filter((skill) => selectedPaths.has(skill.skillPath))
 
-      if (selectedSkills.length === 0) {
-        return { ok: false, logs: ['No selected skills were found in the source repository.'] }
-      }
-
-      const lock = await this.readLock()
-
-      for (const skill of selectedSkills) {
-        const skillName = sanitizeName(skill.name)
-        const storagePath = this.getSkillStoragePath(skillName)
-        logs.push(`Installing ${skill.name} to ${storagePath}`)
-
-        await this.writeSkillFolder(sourceInfo, tree, skill, storagePath)
-
-        for (const agent of request.agents) {
-          const linkedPath = join(AGENTS[agent].dir(), skillName)
-          await this.linkOrCopy(storagePath, linkedPath)
-          logs.push(`Linked ${skill.name} for ${AGENTS[agent].displayName}`)
+        if (selectedSkills.length === 0) {
+          return { ok: false, logs: ['No selected skills were found in the source repository.'] }
         }
 
-        const now = new Date().toISOString()
-        lock.skills[skillName] = {
-          name: skill.name,
-          source: formatSource(sourceInfo),
-          owner: sourceInfo.owner,
-          repo: sourceInfo.repo,
-          ref: sourceInfo.ref!,
-          skillPath: skill.skillPath,
-          folderSha: skill.folderSha,
-          agents: request.agents,
-          storagePath,
-          installedAt: lock.skills[skillName]?.installedAt || now,
-          updatedAt: now
-        }
-      }
+        const lock = await this.readLock()
 
-      await this.writeLock(lock)
-      return { ok: true, logs }
+        for (const skill of selectedSkills) {
+          const skillName = sanitizeName(skill.name)
+          const storagePath = this.getSkillStoragePath(skillName)
+          logs.push(`Installing ${skill.name} to ${storagePath}`)
+
+          await this.writeSkillFolderFromSnapshot(snapshot, skill, storagePath)
+
+          for (const agent of request.agents) {
+            const linkedPath = join(AGENTS[agent].dir(), skillName)
+            await this.linkOrCopy(storagePath, linkedPath)
+            logs.push(`Linked ${skill.name} for ${AGENTS[agent].displayName}`)
+          }
+
+          const now = new Date().toISOString()
+          lock.skills[skillName] = {
+            name: skill.name,
+            source: formatSource(snapshot.source),
+            owner: snapshot.source.owner,
+            repo: snapshot.source.repo,
+            ref: snapshot.source.ref!,
+            skillPath: skill.skillPath,
+            folderSha: skill.folderSha,
+            agents: request.agents,
+            storagePath,
+            installedAt: lock.skills[skillName]?.installedAt || now,
+            updatedAt: now
+          }
+        }
+
+        await this.writeLock(lock)
+        return { ok: true, logs }
+      })
     } catch (error) {
       return { ok: false, logs: [...logs, getErrorMessage(error)] }
     }
@@ -202,30 +231,32 @@ export class SkillsService {
         repo: entry.repo,
         ref: entry.ref
       }
-      const tree = await this.fetchTree(sourceInfo)
-      const latestFolderSha = this.getSkillFolderSha(tree, entry.skillPath)
+      await this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
+        const latestFolderSha = await this.getSkillFolderShaFromSnapshot(snapshot, entry.skillPath)
 
-      if (latestFolderSha && latestFolderSha === entry.folderSha) {
-        logs.push(`${entry.name} is already up to date.`)
-        continue
-      }
+        if (latestFolderSha && latestFolderSha === entry.folderSha) {
+          logs.push(`${entry.name} is already up to date.`)
+          return
+        }
 
-      const previews = await this.parseSkillsFromTree(sourceInfo, tree)
-      const preview = previews.find((skill) => skill.skillPath === entry.skillPath)
-      if (!preview) {
-        logs.push(`Skipped ${entry.name}: upstream skill path no longer exists.`)
-        continue
-      }
+        const previews = await this.parseSkillsFromSnapshot(snapshot)
+        const preview = previews.find((skill) => skill.skillPath === entry.skillPath)
+        if (!preview) {
+          logs.push(`Skipped ${entry.name}: upstream skill path no longer exists.`)
+          return
+        }
 
-      await this.writeSkillFolder(sourceInfo, tree, preview, entry.storagePath)
-      for (const agent of entry.agents) {
-        await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), sanitizeName(entry.name)))
-      }
+        await this.writeSkillFolderFromSnapshot(snapshot, preview, entry.storagePath)
+        for (const agent of entry.agents) {
+          await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), sanitizeName(entry.name)))
+        }
 
-      entry.folderSha = preview.folderSha
-      entry.updatedAt = new Date().toISOString()
-      updated += 1
-      logs.push(`Updated ${entry.name}.`)
+        entry.ref = snapshot.source.ref!
+        entry.folderSha = preview.folderSha
+        entry.updatedAt = new Date().toISOString()
+        updated += 1
+        logs.push(`Updated ${entry.name}.`)
+      })
     }
 
     await this.writeLock(lock)
@@ -315,24 +346,61 @@ export class SkillsService {
       throw new Error('Only public GitHub repositories are supported. Use owner/repo or a github.com URL.')
     }
 
-    if (!ref) ref = await this.fetchDefaultBranch(owner, repo)
     return { owner, repo, ref, subpath }
   }
 
-  private async fetchDefaultBranch(owner: string, repo: string): Promise<string> {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`)
-    if (!response.ok) throw new Error(`GitHub repository lookup failed: ${response.status}`)
-    const data = (await response.json()) as { default_branch?: string }
-    if (!data.default_branch) throw new Error('GitHub repository did not return a default branch.')
-    return data.default_branch
+  private async withRepositorySnapshot<T>(source: SourceInfo, callback: (snapshot: RepositorySnapshot) => Promise<T>): Promise<T> {
+    const snapshot = await this.fetchRepositorySnapshot(source)
+    try {
+      return await callback(snapshot)
+    } finally {
+      if ('rootPath' in snapshot) await cleanupTempDir(snapshot.rootPath)
+    }
   }
 
-  private async fetchTree(source: SourceInfo): Promise<GitHubTree> {
-    const response = await fetch(
-      `https://api.github.com/repos/${source.owner}/${source.repo}/git/trees/${encodeURIComponent(source.ref!)}?recursive=1`
-    )
-    if (!response.ok) throw new Error(`GitHub tree lookup failed: ${response.status}`)
-    return (await response.json()) as GitHubTree
+  private async fetchRepositorySnapshot(source: SourceInfo): Promise<RepositorySnapshot> {
+    const tree = await this.fetchTree(source)
+    if (tree) return { source, tree }
+
+    const rootPath = await cloneRepository(source)
+    if (!source.ref) source.ref = 'HEAD'
+    return { source, rootPath }
+  }
+
+  private async fetchTree(source: SourceInfo): Promise<GitHubTree | null> {
+    const branches = source.ref ? [source.ref] : GITHUB_BRANCH_CANDIDATES
+
+    for (const branch of branches) {
+      const tree = await this.fetchTreeBranch(source, branch)
+      if (tree) {
+        source.ref = branch
+        return tree
+      }
+    }
+
+    return null
+  }
+
+  private async fetchTreeBranch(source: SourceInfo, branch: string): Promise<GitHubTree | null> {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${source.owner}/${source.repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+        {
+          headers: getGitHubHeaders(),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+        }
+      )
+
+      if (!response.ok) return null
+      return (await response.json()) as GitHubTree
+    } catch {
+      return null
+    }
+  }
+
+  private async parseSkillsFromSnapshot(snapshot: RepositorySnapshot): Promise<SkillPreview[]> {
+    if ('tree' in snapshot) return this.parseSkillsFromTree(snapshot.source, snapshot.tree)
+    return this.parseSkillsFromLocal(snapshot.source, snapshot.rootPath)
   }
 
   private async parseSkillsFromTree(source: SourceInfo, tree: GitHubTree): Promise<SkillPreview[]> {
@@ -355,7 +423,38 @@ export class SkillsService {
     return previews
   }
 
-  private async writeSkillFolder(source: SourceInfo, tree: GitHubTree, skill: SkillPreview, storagePath: string): Promise<void> {
+  private async parseSkillsFromLocal(source: SourceInfo, rootPath: string): Promise<SkillPreview[]> {
+    const tree = await buildLocalTree(rootPath)
+    const paths = findSkillMdPaths(tree.tree, source.subpath)
+    const previews: SkillPreview[] = []
+
+    for (const skillPath of paths) {
+      const skillMdPath = join(rootPath, skillPath)
+      if (!isInside(rootPath, skillMdPath)) throw new Error(`Unsafe file path from GitHub: ${skillPath}`)
+
+      const content = await readFile(skillMdPath, 'utf-8')
+      const metadata = parseSkillMetadata(content)
+      previews.push({
+        name: metadata.name,
+        description: metadata.description,
+        skillPath,
+        folderSha: await computeFolderHash(join(rootPath, dirname(skillPath)))
+      })
+    }
+
+    return previews
+  }
+
+  private async writeSkillFolderFromSnapshot(snapshot: RepositorySnapshot, skill: SkillPreview, storagePath: string): Promise<void> {
+    if ('tree' in snapshot) {
+      await this.writeSkillFolderFromTree(snapshot.source, snapshot.tree, skill, storagePath)
+      return
+    }
+
+    await this.writeSkillFolderFromLocal(snapshot.rootPath, skill, storagePath)
+  }
+
+  private async writeSkillFolderFromTree(source: SourceInfo, tree: GitHubTree, skill: SkillPreview, storagePath: string): Promise<void> {
     const skillDir = dirname(skill.skillPath)
     const prefix = skillDir === '.' ? '' : `${skillDir}/`
     const files = tree.tree.filter((entry) => entry.type === 'blob' && (prefix ? entry.path.startsWith(prefix) : true))
@@ -379,6 +478,21 @@ export class SkillsService {
     skill.description = metadata.description
   }
 
+  private async writeSkillFolderFromLocal(rootPath: string, skill: SkillPreview, storagePath: string): Promise<void> {
+    const skillDir = dirname(skill.skillPath)
+    const sourcePath = skillDir === '.' ? rootPath : join(rootPath, skillDir)
+    if (!isInside(rootPath, sourcePath)) throw new Error(`Unsafe skill path from GitHub: ${skill.skillPath}`)
+
+    await rm(storagePath, { recursive: true, force: true })
+    await copySkillDirectory(sourcePath, storagePath)
+
+    const skillMd = await readFile(join(storagePath, 'SKILL.md'), 'utf-8')
+    const metadata = parseSkillMetadata(skillMd)
+    skill.name = metadata.name
+    skill.description = metadata.description
+    skill.folderSha = await computeFolderHash(storagePath)
+  }
+
   private async fetchRawFile(source: SourceInfo, path: string): Promise<Buffer> {
     const response = await fetch(
       `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${encodeURIComponent(source.ref!)}/${path
@@ -394,6 +508,15 @@ export class SkillsService {
     const folderPath = dirname(skillPath)
     if (folderPath === '.') return tree.sha
     return tree.tree.find((entry) => entry.type === 'tree' && entry.path === folderPath)?.sha || null
+  }
+
+  private async getSkillFolderShaFromSnapshot(snapshot: RepositorySnapshot, skillPath: string): Promise<string | null> {
+    if ('tree' in snapshot) return this.getSkillFolderSha(snapshot.tree, skillPath)
+
+    const skillDir = dirname(skillPath)
+    const sourcePath = skillDir === '.' ? snapshot.rootPath : join(snapshot.rootPath, skillDir)
+    if (!isInside(snapshot.rootPath, sourcePath)) throw new Error(`Unsafe skill path from GitHub: ${skillPath}`)
+    return computeFolderHash(sourcePath)
   }
 
   private async linkOrCopy(storagePath: string, linkedPath: string): Promise<void> {
@@ -495,6 +618,118 @@ async function copyDirectory(source: string, target: string): Promise<void> {
   await mkdir(target, { recursive: true })
   const { cp } = await import('fs/promises')
   await cp(source, target, { recursive: true })
+}
+
+async function cloneRepository(source: SourceInfo): Promise<string> {
+  const tempPath = await mkdtemp(join(tmpdir(), 'skills-manager-'))
+  const args = ['clone', '--depth', '1']
+  if (source.ref) args.push('--branch', source.ref)
+  args.push(`https://github.com/${source.owner}/${source.repo}.git`, tempPath)
+
+  try {
+    await execFileAsync('git', args, {
+      timeout: CLONE_TIMEOUT_MS,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_LFS_SKIP_SMUDGE: '1'
+      }
+    })
+    return tempPath
+  } catch (error) {
+    await cleanupTempDir(tempPath)
+    throw new Error(`Failed to clone GitHub repository: ${getErrorMessage(error)}`)
+  }
+}
+
+async function cleanupTempDir(path: string): Promise<void> {
+  const normalizedPath = resolve(path)
+  const normalizedTmp = resolve(tmpdir())
+  if (normalizedPath !== normalizedTmp && normalizedPath.startsWith(normalizedTmp + sep)) {
+    await rm(path, { recursive: true, force: true })
+  }
+}
+
+async function buildLocalTree(rootPath: string): Promise<GitHubTree> {
+  const entries: TreeEntry[] = []
+
+  async function walk(currentPath: string, relativePath: string): Promise<void> {
+    const items = await readdir(currentPath, { withFileTypes: true })
+
+    for (const item of items) {
+      if (item.name === '.git') continue
+
+      const absolutePath = join(currentPath, item.name)
+      const entryPath = relativePath ? `${relativePath}/${item.name}` : item.name
+
+      if (item.isDirectory()) {
+        entries.push({ path: entryPath, type: 'tree', sha: '' })
+        await walk(absolutePath, entryPath)
+      } else if (item.isFile()) {
+        entries.push({ path: entryPath, type: 'blob', sha: '' })
+      }
+    }
+  }
+
+  await walk(rootPath, '')
+  return { sha: await computeFolderHash(rootPath), tree: entries }
+}
+
+async function copySkillDirectory(sourcePath: string, targetPath: string): Promise<void> {
+  await mkdir(targetPath, { recursive: true })
+  const items = await readdir(sourcePath, { withFileTypes: true })
+
+  for (const item of items) {
+    if (item.name === '.git') continue
+
+    const sourceItem = join(sourcePath, item.name)
+    const targetItem = join(targetPath, item.name)
+
+    if (item.isDirectory()) {
+      await copySkillDirectory(sourceItem, targetItem)
+    } else if (item.isFile()) {
+      await mkdir(dirname(targetItem), { recursive: true })
+      await writeFile(targetItem, await readFile(sourceItem))
+    }
+  }
+}
+
+async function computeFolderHash(folderPath: string): Promise<string> {
+  const hash = createHash('sha256')
+
+  async function walk(currentPath: string, relativePath: string): Promise<void> {
+    const items = (await readdir(currentPath, { withFileTypes: true }))
+      .filter((item) => item.name !== '.git')
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    for (const item of items) {
+      const sourceItem = join(currentPath, item.name)
+      const entryPath = relativePath ? `${relativePath}/${item.name}` : item.name
+      const stats = await lstat(sourceItem)
+
+      if (stats.isDirectory()) {
+        await walk(sourceItem, entryPath)
+      } else if (stats.isFile()) {
+        hash.update(entryPath)
+        hash.update('\0')
+        hash.update(await readFile(sourceItem))
+        hash.update('\0')
+      }
+    }
+  }
+
+  await walk(folderPath, '')
+  return `sha256:${hash.digest('hex')}`
+}
+
+function getGitHubHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'skills-manager'
+  }
+  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
+  if (token) headers.Authorization = `Bearer ${token}`
+  return headers
 }
 
 function getErrorMessage(error: unknown): string {

@@ -50,7 +50,17 @@ pnpm install
 pnpm dev
 ```
 
-该命令会启动 Electron Vite 开发环境。
+该命令会启动 Electron Vite 开发环境，并默认启用本地隔离调试模式，避免安装、更新或移除 skills 时影响真实的 Claude Code 与 Codex 配置。
+
+调试数据会写入当前仓库的 `.debug/` 目录：
+
+```text
+.debug/userData
+.debug/claude/skills
+.debug/codex/skills
+```
+
+`SKILLS_MANAGER_LOCAL_DEBUG=1` 的优先级最高；启用后会忽略 `CLAUDE_CONFIG_DIR` 与 `CODEX_HOME`。如需测试真实配置目录，可以直接运行不带该变量的 `electron-vite dev`。
 
 ## 代码检查
 
@@ -102,5 +112,6 @@ src/
 - Codex skills 默认目录：`~/.codex/skills`
 - 可通过 `CLAUDE_CONFIG_DIR` 覆盖 Claude Code 配置目录。
 - 可通过 `CODEX_HOME` 覆盖 Codex 配置目录。
+- 开发模式下 `pnpm dev` 会设置 `SKILLS_MANAGER_LOCAL_DEBUG=1`，强制使用仓库内 `.debug/` 调试目录。
 
 应用会在自身存储中维护安装记录，并将 skills 链接到对应 agent 的 skills 目录。
