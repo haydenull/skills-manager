@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { Button, Card, Checkbox, CheckboxGroup, Chip, Input, Spinner } from '@heroui/react'
+import { Button, Card, Checkbox, CheckboxGroup, Chip, Input, Spinner, Switch } from '@heroui/react'
 import {
   RiCheckLine,
   RiCheckboxMultipleLine,
@@ -34,6 +34,7 @@ const STEP_ITEMS = [
 
 function InstallPage(): React.JSX.Element {
   const [source, setSource] = useState('')
+  const [fullDepth, setFullDepth] = useState(false)
   const [previewedSource, setPreviewedSource] = useState<string | null>(null)
   const [previews, setPreviews] = useState<SkillPreview[]>([])
   const [selectedPreviews, setSelectedPreviews] = useState<string[]>([])
@@ -64,7 +65,7 @@ function InstallPage(): React.JSX.Element {
 
   async function previewSource(): Promise<void> {
     await run('正在预览来源', async () => {
-      const skills = await window.api.skills.previewGitHubSource(trimmedSource)
+      const skills = await window.api.skills.previewSource(trimmedSource, fullDepth)
       setPreviewedSource(trimmedSource)
       setPreviews(skills)
       setSelectedPreviews([])
@@ -81,13 +82,23 @@ function InstallPage(): React.JSX.Element {
       window.api.skills.install({
         source: trimmedSource,
         skills: selectedPreviewItems,
-        agents: selectedAgents
+        agents: selectedAgents,
+        fullDepth
       })
     )
   }
 
   function updateSource(value: string): void {
     setSource(value)
+    resetPreview()
+  }
+
+  function updateFullDepth(value: boolean): void {
+    setFullDepth(value)
+    resetPreview()
+  }
+
+  function resetPreview(): void {
     setPreviewedSource(null)
     setPreviews([])
     setSelectedPreviews([])
@@ -166,7 +177,7 @@ function InstallPage(): React.JSX.Element {
             <div className="flex items-center gap-2">
               <StepBadge step={1} currentStep={currentStep} />
               <RiGithubLine size={18} className={currentStep === 1 ? 'text-accent' : 'text-muted'} />
-              <Card.Title className="text-base font-medium">输入 GitHub 来源</Card.Title>
+              <Card.Title className="text-base font-medium">输入 Git 仓库来源</Card.Title>
             </div>
             {busy && !isPreviewingSource && (
               <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground">
@@ -178,7 +189,7 @@ function InstallPage(): React.JSX.Element {
           <Card.Content className="gap-0 px-5 py-4">
             <Input
               aria-label="Repository"
-              placeholder="vercel-labs/agent-skills"
+              placeholder="vercel-labs/agent-skills 或 git@gitlab.corp.youdao.com:hikari/f2e/common-components/ai-config-kit.git"
               value={source}
               onChange={(event) => updateSource(event.target.value)}
               disabled={busy}
@@ -205,10 +216,19 @@ function InstallPage(): React.JSX.Element {
           <Card.Content
             className={`!flex-row !items-center justify-between gap-3 px-5 py-4 ${isStepDisabled(2) ? 'pointer-events-none select-none' : ''}`}
           >
-            <div>
+            <div className="grid gap-3">
               <Card.Description className="text-xs text-muted">
-                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个 Skill。` : '先预览当前输入的 GitHub 来源。'}
+                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个 Skill。` : '先预览当前输入的 Git 仓库来源。'}
               </Card.Description>
+              <Switch isSelected={fullDepth} onChange={updateFullDepth} isDisabled={busy}>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+                <Switch.Content>
+                  <div className="text-sm font-medium text-foreground">扫描所有子目录</div>
+                  <div className="text-xs text-muted">默认无结果时自动递归；开启后始终扫描最多 5 层。</div>
+                </Switch.Content>
+              </Switch>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {isPreviewingSource && (
@@ -286,7 +306,7 @@ function InstallPage(): React.JSX.Element {
                 })}
               </CheckboxGroup>
             )}
-            {!hasPreviewedSource && <EmptyState text="先预览一个 GitHub 仓库。" />}
+            {!hasPreviewedSource && <EmptyState text="先预览一个 GitHub 或 GitLab 仓库。" />}
             {hasPreviewedSource && previews.length === 0 && <EmptyState text="当前来源没有找到 Skill。" />}
           </Card.Content>
         </Card>

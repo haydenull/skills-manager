@@ -12,7 +12,7 @@ import type {
 type SkillsApi = {
   listGlobal: () => Promise<InstalledSkill[]>
   getSettingsInfo: () => Promise<SettingsInfo>
-  previewGitHubSource: (source: string) => Promise<SkillPreview[]>
+  previewSource: (source: string, fullDepth?: boolean) => Promise<SkillPreview[]>
   install: (request: InstallRequest) => Promise<OperationResult>
   addAgents: (request: AgentUpdateRequest) => Promise<OperationResult>
   update: (names: string[]) => Promise<OperationResult>

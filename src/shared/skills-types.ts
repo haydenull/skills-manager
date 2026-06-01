@@ -19,6 +19,7 @@ export type InstallRequest = {
   source: string
   skills: SkillPreview[]
   agents: AgentId[]
+  fullDepth?: boolean
 }
 
 export type AgentUpdateRequest = {

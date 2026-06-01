@@ -17,9 +17,13 @@ import type {
   SkillPreview
 } from '../shared/skills-types'
 
+type SourceProvider = 'github' | 'gitlab'
+
 type SourceInfo = {
-  owner: string
-  repo: string
+  provider: SourceProvider
+  repositoryUrl: string
+  owner?: string
+  repo?: string
   ref?: string
   subpath?: string
 }
@@ -28,6 +32,11 @@ type TreeEntry = {
   path: string
   type: 'blob' | 'tree'
   sha: string
+}
+
+type SkillMdPath = {
+  path: string
+  skipInvalidMetadata?: boolean
 }
 
 type GitHubTree = {
@@ -48,9 +57,11 @@ type RepositorySnapshot =
 type LockEntry = {
   name: string
   source: string
-  owner: string
-  repo: string
-  ref: string
+  provider?: SourceProvider
+  repositoryUrl?: string
+  owner?: string
+  repo?: string
+  ref?: string
   skillPath: string
   folderSha: string | null
   agents: AgentId[]
@@ -130,9 +141,9 @@ export class SkillsService {
     }
   }
 
-  async previewGitHubSource(source: string): Promise<SkillPreview[]> {
+  async previewSource(source: string, fullDepth = false): Promise<SkillPreview[]> {
     const sourceInfo = await this.resolveSource(source)
-    return this.withRepositorySnapshot(sourceInfo, (snapshot) => this.parseSkillsFromSnapshot(snapshot))
+    return this.withRepositorySnapshot(sourceInfo, (snapshot) => this.parseSkillsFromSnapshot(snapshot, fullDepth))
   }
 
   async install(request: InstallRequest): Promise<OperationResult> {
@@ -141,7 +152,7 @@ export class SkillsService {
     try {
       const sourceInfo = await this.resolveSource(request.source)
       return await this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
-        const availableSkills = await this.parseSkillsFromSnapshot(snapshot)
+        const availableSkills = await this.parseSkillsFromSnapshot(snapshot, request.fullDepth)
         const selectedPaths = new Set(request.skills.map((skill) => skill.skillPath))
         const selectedSkills = availableSkills.filter((skill) => selectedPaths.has(skill.skillPath))
 
@@ -168,9 +179,11 @@ export class SkillsService {
           lock.skills[skillName] = {
             name: skill.name,
             source: formatSource(snapshot.source),
+            provider: snapshot.source.provider,
+            repositoryUrl: snapshot.source.repositoryUrl,
             owner: snapshot.source.owner,
             repo: snapshot.source.repo,
-            ref: snapshot.source.ref!,
+            ref: snapshot.source.provider === 'github' ? snapshot.source.ref : undefined,
             skillPath: skill.skillPath,
             folderSha: skill.folderSha,
             agents: request.agents,
@@ -226,11 +239,7 @@ export class SkillsService {
         continue
       }
 
-      const sourceInfo: SourceInfo = {
-        owner: entry.owner,
-        repo: entry.repo,
-        ref: entry.ref
-      }
+      const sourceInfo = getLockEntrySource(entry)
       await this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
         const latestFolderSha = await this.getSkillFolderShaFromSnapshot(snapshot, entry.skillPath)
 
@@ -239,7 +248,7 @@ export class SkillsService {
           return
         }
 
-        const previews = await this.parseSkillsFromSnapshot(snapshot)
+        const previews = await this.parseSkillsFromSnapshot(snapshot, true)
         const preview = previews.find((skill) => skill.skillPath === entry.skillPath)
         if (!preview) {
           logs.push(`Skipped ${entry.name}: upstream skill path no longer exists.`)
@@ -324,29 +333,38 @@ export class SkillsService {
 
   private async resolveSource(input: string): Promise<SourceInfo> {
     const trimmed = input.trim()
-    let owner: string | undefined
-    let repo: string | undefined
-    let ref: string | undefined
-    let subpath: string | undefined
-
-    const urlMatch = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?\/?$/)
+    const githubUrlMatch = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?\/?$/)
     const shorthandMatch = trimmed.match(/^([^/]+)\/([^/]+)$/)
 
-    if (urlMatch) {
-      owner = urlMatch[1]
-      repo = urlMatch[2].replace(/\.git$/, '')
-      ref = urlMatch[3]
-      subpath = urlMatch[4]
-    } else if (shorthandMatch) {
-      owner = shorthandMatch[1]
-      repo = shorthandMatch[2]
+    if (githubUrlMatch || shorthandMatch) {
+      const match = githubUrlMatch || shorthandMatch!
+      const owner = match[1]
+      const repo = match[2].replace(/\.git$/, '')
+      return {
+        provider: 'github',
+        repositoryUrl: `https://github.com/${owner}/${repo}.git`,
+        owner,
+        repo,
+        ref: githubUrlMatch?.[3],
+        subpath: githubUrlMatch?.[4]
+      }
     }
 
-    if (!owner || !repo) {
-      throw new Error('Only public GitHub repositories are supported. Use owner/repo or a github.com URL.')
+    return resolveGitLabSource(trimmed)
+  }
+
+  private async fetchGitHubTree(source: SourceInfo): Promise<GitHubTree | null> {
+    const branches = source.ref ? [source.ref] : GITHUB_BRANCH_CANDIDATES
+
+    for (const branch of branches) {
+      const tree = await this.fetchGitHubTreeBranch(source, branch)
+      if (tree) {
+        source.ref = branch
+        return tree
+      }
     }
 
-    return { owner, repo, ref, subpath }
+    return null
   }
 
   private async withRepositorySnapshot<T>(source: SourceInfo, callback: (snapshot: RepositorySnapshot) => Promise<T>): Promise<T> {
@@ -359,32 +377,20 @@ export class SkillsService {
   }
 
   private async fetchRepositorySnapshot(source: SourceInfo): Promise<RepositorySnapshot> {
-    const tree = await this.fetchTree(source)
-    if (tree) return { source, tree }
+    if (source.provider === 'github') {
+      const tree = await this.fetchGitHubTree(source)
+      if (tree) return { source, tree }
+    }
 
     const rootPath = await cloneRepository(source)
-    if (!source.ref) source.ref = 'HEAD'
+    if (source.provider === 'github' && !source.ref) source.ref = 'HEAD'
     return { source, rootPath }
   }
 
-  private async fetchTree(source: SourceInfo): Promise<GitHubTree | null> {
-    const branches = source.ref ? [source.ref] : GITHUB_BRANCH_CANDIDATES
-
-    for (const branch of branches) {
-      const tree = await this.fetchTreeBranch(source, branch)
-      if (tree) {
-        source.ref = branch
-        return tree
-      }
-    }
-
-    return null
-  }
-
-  private async fetchTreeBranch(source: SourceInfo, branch: string): Promise<GitHubTree | null> {
+  private async fetchGitHubTreeBranch(source: SourceInfo, branch: string): Promise<GitHubTree | null> {
     try {
       const response = await fetch(
-        `https://api.github.com/repos/${source.owner}/${source.repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+        `https://api.github.com/repos/${source.owner!}/${source.repo!}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
         {
           headers: getGitHubHeaders(),
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
@@ -398,20 +404,21 @@ export class SkillsService {
     }
   }
 
-  private async parseSkillsFromSnapshot(snapshot: RepositorySnapshot): Promise<SkillPreview[]> {
-    if ('tree' in snapshot) return this.parseSkillsFromTree(snapshot.source, snapshot.tree)
-    return this.parseSkillsFromLocal(snapshot.source, snapshot.rootPath)
+  private async parseSkillsFromSnapshot(snapshot: RepositorySnapshot, fullDepth = false): Promise<SkillPreview[]> {
+    if ('tree' in snapshot) return this.parseSkillsFromTree(snapshot.source, snapshot.tree, fullDepth)
+    return this.parseSkillsFromLocal(snapshot.source, snapshot.rootPath, fullDepth)
   }
 
-  private async parseSkillsFromTree(source: SourceInfo, tree: GitHubTree): Promise<SkillPreview[]> {
-    const paths = findSkillMdPaths(tree.tree, source.subpath)
+  private async parseSkillsFromTree(source: SourceInfo, tree: GitHubTree, fullDepth: boolean): Promise<SkillPreview[]> {
+    const paths = findSkillMdPaths(tree.tree, source.subpath, fullDepth)
     const previews: SkillPreview[] = []
 
-    for (const skillPath of paths) {
+    for (const { path: skillPath, skipInvalidMetadata } of paths) {
       const entry = tree.tree.find((item) => item.path === skillPath)
       if (!entry) continue
       const content = await this.fetchRawFile(source, skillPath)
-      const metadata = parseSkillMetadata(content.toString('utf-8'))
+      const metadata = parseSkillMetadata(content.toString('utf-8'), skipInvalidMetadata === true)
+      if (!metadata) continue
       previews.push({
         name: metadata.name,
         description: metadata.description,
@@ -423,17 +430,18 @@ export class SkillsService {
     return previews
   }
 
-  private async parseSkillsFromLocal(source: SourceInfo, rootPath: string): Promise<SkillPreview[]> {
+  private async parseSkillsFromLocal(source: SourceInfo, rootPath: string, fullDepth: boolean): Promise<SkillPreview[]> {
     const tree = await buildLocalTree(rootPath)
-    const paths = findSkillMdPaths(tree.tree, source.subpath)
+    const paths = findSkillMdPaths(tree.tree, source.subpath, fullDepth)
     const previews: SkillPreview[] = []
 
-    for (const skillPath of paths) {
+    for (const { path: skillPath, skipInvalidMetadata } of paths) {
       const skillMdPath = join(rootPath, skillPath)
-      if (!isInside(rootPath, skillMdPath)) throw new Error(`Unsafe file path from GitHub: ${skillPath}`)
+      if (!isInside(rootPath, skillMdPath)) throw new Error(`Unsafe file path from repository: ${skillPath}`)
 
       const content = await readFile(skillMdPath, 'utf-8')
-      const metadata = parseSkillMetadata(content)
+      const metadata = parseSkillMetadata(content, skipInvalidMetadata === true)
+      if (!metadata) continue
       previews.push({
         name: metadata.name,
         description: metadata.description,
@@ -465,7 +473,7 @@ export class SkillsService {
     for (const file of files) {
       const relativePath = prefix ? file.path.slice(prefix.length) : file.path
       const targetPath = join(storagePath, relativePath)
-      if (!isInside(storagePath, targetPath)) throw new Error(`Unsafe file path from GitHub: ${file.path}`)
+      if (!isInside(storagePath, targetPath)) throw new Error(`Unsafe file path from repository: ${file.path}`)
 
       const content = await this.fetchRawFile(source, file.path)
       await mkdir(dirname(targetPath), { recursive: true })
@@ -481,7 +489,7 @@ export class SkillsService {
   private async writeSkillFolderFromLocal(rootPath: string, skill: SkillPreview, storagePath: string): Promise<void> {
     const skillDir = dirname(skill.skillPath)
     const sourcePath = skillDir === '.' ? rootPath : join(rootPath, skillDir)
-    if (!isInside(rootPath, sourcePath)) throw new Error(`Unsafe skill path from GitHub: ${skill.skillPath}`)
+    if (!isInside(rootPath, sourcePath)) throw new Error(`Unsafe skill path from repository: ${skill.skillPath}`)
 
     await rm(storagePath, { recursive: true, force: true })
     await copySkillDirectory(sourcePath, storagePath)
@@ -495,7 +503,7 @@ export class SkillsService {
 
   private async fetchRawFile(source: SourceInfo, path: string): Promise<Buffer> {
     const response = await fetch(
-      `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${encodeURIComponent(source.ref!)}/${path
+      `https://raw.githubusercontent.com/${source.owner!}/${source.repo!}/${encodeURIComponent(source.ref!)}/${path
         .split('/')
         .map(encodeURIComponent)
         .join('/')}`
@@ -515,7 +523,7 @@ export class SkillsService {
 
     const skillDir = dirname(skillPath)
     const sourcePath = skillDir === '.' ? snapshot.rootPath : join(snapshot.rootPath, skillDir)
-    if (!isInside(snapshot.rootPath, sourcePath)) throw new Error(`Unsafe skill path from GitHub: ${skillPath}`)
+    if (!isInside(snapshot.rootPath, sourcePath)) throw new Error(`Unsafe skill path from repository: ${skillPath}`)
     return computeFolderHash(sourcePath)
   }
 
@@ -535,11 +543,11 @@ function createEmptyLock(): LockFile {
   return { version: 1, skills: {} }
 }
 
-function findSkillMdPaths(tree: TreeEntry[], subpath?: string): string[] {
+function findSkillMdPaths(tree: TreeEntry[], subpath?: string, fullDepth = false): SkillMdPath[] {
   const allSkillMds = tree.filter((entry) => entry.type === 'blob' && entry.path.toLowerCase().endsWith('skill.md')).map((entry) => entry.path)
   const prefix = subpath ? (subpath.endsWith('/') ? subpath : `${subpath}/`) : ''
   const filtered = prefix ? allSkillMds.filter((path) => path.startsWith(prefix)) : allSkillMds
-  const results: string[] = []
+  const results: SkillMdPath[] = []
   const seen = new Set<string>()
   const lowerSkillMdSet = new Set(filtered.map((path) => path.toLowerCase()))
 
@@ -554,7 +562,7 @@ function findSkillMdPaths(tree: TreeEntry[], subpath?: string): string[] {
 
       if (rest.toLowerCase() === 'skill.md' || (parts.length === 2 && parts[1].toLowerCase() === 'skill.md')) {
         if (!seen.has(skillMd)) {
-          results.push(skillMd)
+          results.push({ path: skillMd })
           seen.add(skillMd)
         }
         continue
@@ -563,22 +571,48 @@ function findSkillMdPaths(tree: TreeEntry[], subpath?: string): string[] {
       if (isContainer && parts.length === 3 && parts[2].toLowerCase() === 'skill.md' && !SKIP_DIRS.has(parts[0]) && !SKIP_DIRS.has(parts[1])) {
         const parentSkillMd = `${fullPrefix}${parts[0]}/SKILL.md`.toLowerCase()
         if (!lowerSkillMdSet.has(parentSkillMd) && !seen.has(skillMd)) {
-          results.push(skillMd)
+          results.push({ path: skillMd })
           seen.add(skillMd)
         }
       }
     }
   }
 
+  if (results.length === 0 || fullDepth) {
+    for (const skillMd of filtered) {
+      if (seen.has(skillMd)) continue
+
+      const relativePath = skillMd.slice(prefix.length)
+      const parts = relativePath.split('/')
+      const directories = parts.slice(0, -1)
+      if (parts.at(-1)?.toLowerCase() !== 'skill.md' || directories.length > 5 || directories.some((directory) => SKIP_DIRS.has(directory))) continue
+
+      results.push({ path: skillMd, skipInvalidMetadata: true })
+      seen.add(skillMd)
+    }
+  }
+
   return results
 }
 
-function parseSkillMetadata(content: string): { name: string; description: string } {
+function parseSkillMetadata(content: string): { name: string; description: string }
+function parseSkillMetadata(content: string, skipInvalid: boolean): { name: string; description: string } | null
+function parseSkillMetadata(content: string, skipInvalid = false): { name: string; description: string } | null {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
-  if (!match) throw new Error('SKILL.md is missing frontmatter.')
+  if (!match) {
+    if (skipInvalid) return null
+    throw new Error('SKILL.md is missing frontmatter.')
+  }
 
-  const data = parse(match[1]) as { name?: unknown; description?: unknown }
+  let data: { name?: unknown; description?: unknown }
+  try {
+    data = parse(match[1]) as { name?: unknown; description?: unknown }
+  } catch (error) {
+    if (skipInvalid) return null
+    throw error
+  }
   if (typeof data.name !== 'string' || typeof data.description !== 'string') {
+    if (skipInvalid) return null
     throw new Error('SKILL.md must include string name and description fields.')
   }
 
@@ -605,7 +639,43 @@ function sanitizeName(name: string): string {
 }
 
 function formatSource(source: SourceInfo): string {
-  return `${source.owner}/${source.repo}`
+  return source.provider === 'github' ? `${source.owner}/${source.repo}` : source.repositoryUrl
+}
+
+function resolveGitLabSource(input: string): SourceInfo {
+  const match = input.match(/^git@([^:]+):(.+?)\/?$/)
+  if (!match || match[1] === 'github.com') {
+    throw new Error('Use owner/repo for GitHub or an SSH clone URL for GitLab, such as git@gitlab.example.com:group/repo.git.')
+  }
+
+  const host = match[1]
+  const repositoryPath = match[2].replace(/\.git$/, '')
+
+  if (repositoryPath.split('/').length < 2) {
+    throw new Error('GitLab SSH URL must include a group and repository name.')
+  }
+
+  const repositoryUrl = `git@${host}:${repositoryPath}.git`
+  return { provider: 'gitlab', repositoryUrl }
+}
+
+function getLockEntrySource(entry: LockEntry): SourceInfo {
+  if (entry.provider === 'gitlab') {
+    if (!entry.repositoryUrl) throw new Error(`Invalid GitLab source for ${entry.name}.`)
+    if (!entry.repositoryUrl.startsWith('git@')) {
+      throw new Error(`GitLab source for ${entry.name} uses HTTPS. Reinstall it with an SSH clone URL.`)
+    }
+    return { provider: 'gitlab', repositoryUrl: entry.repositoryUrl }
+  }
+
+  if (!entry.owner || !entry.repo) throw new Error(`Invalid GitHub source for ${entry.name}.`)
+  return {
+    provider: 'github',
+    repositoryUrl: entry.repositoryUrl || `https://github.com/${entry.owner}/${entry.repo}.git`,
+    owner: entry.owner,
+    repo: entry.repo,
+    ref: entry.ref
+  }
 }
 
 function isInside(basePath: string, targetPath: string): boolean {
@@ -623,22 +693,27 @@ async function copyDirectory(source: string, target: string): Promise<void> {
 async function cloneRepository(source: SourceInfo): Promise<string> {
   const tempPath = await mkdtemp(join(tmpdir(), 'skills-manager-'))
   const args = ['clone', '--depth', '1']
-  if (source.ref) args.push('--branch', source.ref)
-  args.push(`https://github.com/${source.owner}/${source.repo}.git`, tempPath)
+  if (source.ref && source.ref !== 'HEAD') args.push('--branch', source.ref)
+  args.push(source.repositoryUrl, tempPath)
 
   try {
     await execFileAsync('git', args, {
       timeout: CLONE_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_LFS_SKIP_SMUDGE: '1'
-      }
+      env: getGitEnvironment()
     })
     return tempPath
   } catch (error) {
     await cleanupTempDir(tempPath)
-    throw new Error(`Failed to clone GitHub repository: ${getErrorMessage(error)}`)
+    throw new Error(`Failed to clone repository: ${getErrorMessage(error)}`)
+  }
+}
+
+function getGitEnvironment(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_LFS_SKIP_SMUDGE: '1',
+    GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes'
   }
 }
 

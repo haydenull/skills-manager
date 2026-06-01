@@ -7,7 +7,7 @@ const api = {
   skills: {
     listGlobal: () => ipcRenderer.invoke('skills:list-global'),
     getSettingsInfo: () => ipcRenderer.invoke('skills:get-settings-info'),
-    previewGitHubSource: (source: string) => ipcRenderer.invoke('skills:preview-github-source', source),
+    previewSource: (source: string, fullDepth?: boolean) => ipcRenderer.invoke('skills:preview-source', source, fullDepth),
     install: (request: InstallRequest) => ipcRenderer.invoke('skills:install', request),
     addAgents: (request: AgentUpdateRequest) => ipcRenderer.invoke('skills:add-agents', request),
     update: (names: string[]) => ipcRenderer.invoke('skills:update', names),
