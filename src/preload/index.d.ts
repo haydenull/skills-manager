@@ -6,7 +6,8 @@ import type {
   OperationResult,
   RemoveRequest,
   SettingsInfo,
-  SkillPreview
+  SkillPreview,
+  SkillUpdateStatus
 } from '../shared/skills-types'
 
 type SkillsApi = {
@@ -15,8 +16,10 @@ type SkillsApi = {
   previewSource: (source: string, fullDepth?: boolean) => Promise<SkillPreview[]>
   install: (request: InstallRequest) => Promise<OperationResult>
   addAgents: (request: AgentUpdateRequest) => Promise<OperationResult>
+  checkUpdates: (names: string[]) => Promise<SkillUpdateStatus[]>
   update: (names: string[]) => Promise<OperationResult>
   remove: (request: RemoveRequest) => Promise<OperationResult>
+  openStorageFolder: (name: string) => Promise<OperationResult>
 }
 
 declare global {

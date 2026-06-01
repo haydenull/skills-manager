@@ -5,7 +5,14 @@ export type InstalledSkill = {
   storagePath: string
   agents: AgentId[]
   source?: string
+  provider?: 'github' | 'gitlab'
   updatedAt?: string
+}
+
+export type SkillUpdateStatus = {
+  name: string
+  hasUpdate: boolean
+  error?: string
 }
 
 export type SkillPreview = {

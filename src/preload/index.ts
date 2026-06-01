@@ -10,8 +10,10 @@ const api = {
     previewSource: (source: string, fullDepth?: boolean) => ipcRenderer.invoke('skills:preview-source', source, fullDepth),
     install: (request: InstallRequest) => ipcRenderer.invoke('skills:install', request),
     addAgents: (request: AgentUpdateRequest) => ipcRenderer.invoke('skills:add-agents', request),
+    checkUpdates: (names: string[]) => ipcRenderer.invoke('skills:check-updates', names),
     update: (names: string[]) => ipcRenderer.invoke('skills:update', names),
-    remove: (request: RemoveRequest) => ipcRenderer.invoke('skills:remove', request)
+    remove: (request: RemoveRequest) => ipcRenderer.invoke('skills:remove', request),
+    openStorageFolder: (name: string) => ipcRenderer.invoke('skills:open-storage-folder', name)
   }
 }
 

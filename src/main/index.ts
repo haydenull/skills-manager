@@ -16,7 +16,7 @@ const skillsService = new SkillsService()
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
+    width: 1024,
     height: 670,
     show: false,
     autoHideMenuBar: true,
@@ -64,8 +64,10 @@ app.whenReady().then(() => {
   ipcMain.handle('skills:preview-source', (_event, source: string, fullDepth?: boolean) => skillsService.previewSource(source, fullDepth))
   ipcMain.handle('skills:install', (_event, request) => skillsService.install(request))
   ipcMain.handle('skills:add-agents', (_event, request) => skillsService.addAgents(request))
+  ipcMain.handle('skills:check-updates', (_event, names: string[]) => skillsService.checkUpdates(names))
   ipcMain.handle('skills:update', (_event, names: string[]) => skillsService.update(names))
   ipcMain.handle('skills:remove', (_event, request) => skillsService.remove(request))
+  ipcMain.handle('skills:open-storage-folder', (_event, name: string) => skillsService.openStorageFolder(name))
 
   createWindow()
 

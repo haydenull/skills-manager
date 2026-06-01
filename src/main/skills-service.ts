@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { homedir, tmpdir } from 'os'
@@ -14,7 +14,8 @@ import type {
   OperationResult,
   RemoveRequest,
   SettingsInfo,
-  SkillPreview
+  SkillPreview,
+  SkillUpdateStatus
 } from '../shared/skills-types'
 
 type SourceProvider = 'github' | 'gitlab'
@@ -126,6 +127,7 @@ export class SkillsService {
         storagePath: skill.storagePath,
         agents: skill.agents,
         source: skill.source,
+        provider: skill.provider,
         updatedAt: skill.updatedAt
       }))
   }
@@ -272,6 +274,35 @@ export class SkillsService {
     return { ok: true, logs: logs.length > 0 ? logs : [`Updated ${updated} skills.`] }
   }
 
+  async checkUpdates(names: string[]): Promise<SkillUpdateStatus[]> {
+    const lock = await this.readLock()
+    const statuses: SkillUpdateStatus[] = []
+
+    for (const name of names) {
+      const entry = lock.skills[sanitizeName(name)]
+      if (!entry) continue
+
+      try {
+        const sourceInfo = getLockEntrySource(entry)
+        await this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
+          const latestFolderSha = await this.getSkillFolderShaFromSnapshot(snapshot, entry.skillPath)
+          statuses.push({
+            name: entry.name,
+            hasUpdate: !latestFolderSha || latestFolderSha !== entry.folderSha
+          })
+        })
+      } catch (error) {
+        statuses.push({
+          name: entry.name,
+          hasUpdate: false,
+          error: `Failed to check updates for ${entry.name}: ${getErrorMessage(error)}`
+        })
+      }
+    }
+
+    return statuses
+  }
+
   async remove(request: RemoveRequest): Promise<OperationResult> {
     const lock = await this.readLock()
     const logs: string[] = []
@@ -301,6 +332,14 @@ export class SkillsService {
 
     await this.writeLock(lock)
     return { ok: true, logs }
+  }
+
+  async openStorageFolder(name: string): Promise<OperationResult> {
+    const entry = (await this.readLock()).skills[sanitizeName(name)]
+    if (!entry) return { ok: false, logs: [`Unable to open ${name}: not installed by this app.`] }
+
+    const error = await shell.openPath(entry.storagePath)
+    return error ? { ok: false, logs: [`Unable to open ${name}: ${error}`] } : { ok: true, logs: [] }
   }
 
   private getUserDataPath(): string {

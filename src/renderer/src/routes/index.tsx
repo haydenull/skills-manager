@@ -1,10 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button, Spinner, Table, Tooltip } from '@heroui/react'
+import { Button, Chip, Spinner, Table, Tooltip } from '@heroui/react'
 import {
   RiClaudeLine,
   RiDeleteBinLine,
-  RiFolderLine,
+  RiFolderOpenLine,
+  RiGithubLine,
+  RiGitlabLine,
   RiInboxLine,
   RiOpenaiLine,
   RiRefreshLine,
@@ -24,6 +26,7 @@ const AGENT_OPTIONS = [
 
 function DashboardPage(): React.JSX.Element {
   const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([])
+  const [skillsWithUpdates, setSkillsWithUpdates] = useState<string[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
 
@@ -51,6 +54,10 @@ function DashboardPage(): React.JSX.Element {
   async function refreshSkills(): Promise<void> {
     const skills = await window.api.skills.listGlobal()
     setInstalledSkills(skills)
+    const statuses = await window.api.skills.checkUpdates(skills.map((skill) => skill.name))
+    setSkillsWithUpdates(statuses.filter((status) => status.hasUpdate).map((status) => status.name))
+    const errors = statuses.flatMap((status) => (status.error ? [status.error] : []))
+    if (errors.length > 0) setLogs(errors)
   }
 
   async function addAgent(skill: InstalledSkill, agent: AgentId): Promise<void> {
@@ -80,10 +87,23 @@ function DashboardPage(): React.JSX.Element {
     )
   }
 
+  async function updateSkill(skill: InstalledSkill): Promise<void> {
+    await run(`正在更新 ${skill.name}`, () => window.api.skills.update([skill.name]))
+  }
+
+  async function openStorageFolder(skill: InstalledSkill): Promise<void> {
+    try {
+      const result = await window.api.skills.openStorageFolder(skill.name)
+      if (!result.ok) setLogs(result.logs)
+    } catch (error) {
+      setLogs([error instanceof Error ? error.message : String(error)])
+    }
+  }
+
   const busy = busyLabel !== null
 
   return (
-    <section className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <section className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-surface">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div>
@@ -108,14 +128,15 @@ function DashboardPage(): React.JSX.Element {
 
         <Table variant="secondary" className="px-4">
           <Table.ScrollContainer>
-            <Table.Content className="min-w-[900px]">
+            <Table.Content className="min-w-[720px] table-fixed">
               <Table.Header>
-                <Table.Column isRowHeader>名称</Table.Column>
-                <Table.Column>Agent</Table.Column>
-                <Table.Column>来源</Table.Column>
-                <Table.Column>存储位置</Table.Column>
-                <Table.Column>更新时间</Table.Column>
-                <Table.Column>操作</Table.Column>
+                <Table.Column className="w-40" isRowHeader>
+                  名称
+                </Table.Column>
+                <Table.Column className="w-24">Agent</Table.Column>
+                <Table.Column className="w-40">来源</Table.Column>
+                <Table.Column className="w-40">更新时间</Table.Column>
+                <Table.Column className="w-32">操作</Table.Column>
               </Table.Header>
               <Table.Body
                 renderEmptyState={() => (
@@ -127,53 +148,115 @@ function DashboardPage(): React.JSX.Element {
               >
                 {installedSkills.map((skill) => (
                   <Table.Row key={skill.name} id={skill.name}>
-                    <Table.Cell className="font-medium text-foreground">{skill.name}</Table.Cell>
+                    <Table.Cell className="font-medium text-foreground">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Tooltip>
+                          <Tooltip.Trigger className="block min-w-0 truncate text-left">{skill.name}</Tooltip.Trigger>
+                          <Tooltip.Content>{skill.name}</Tooltip.Content>
+                        </Tooltip>
+                        {skillsWithUpdates.includes(skill.name) && (
+                          <Chip size="sm" color="accent" variant="soft">
+                            可更新
+                          </Chip>
+                        )}
+                      </div>
+                    </Table.Cell>
                     <Table.Cell>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex gap-2">
                         {AGENT_OPTIONS.map((agent) => {
                           const Icon = agent.icon
                           const isInstalled = skill.agents.includes(agent.id)
                           const label = isInstalled ? `从 ${agent.label} 移除 ${skill.name}` : `安装 ${skill.name} 到 ${agent.label}`
 
                           return (
-                            <button
-                              key={agent.id}
-                              type="button"
-                              aria-label={label}
-                              title={label}
-                              className={`inline-flex size-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                                isInstalled
-                                  ? 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
-                                  : 'border-border bg-surface text-muted hover:border-border-secondary hover:bg-surface-hover hover:text-foreground'
-                              }`}
-                              onClick={() => void (isInstalled ? removeAgent(skill, agent.id) : addAgent(skill, agent.id))}
-                              disabled={busy}
-                            >
-                              <Icon size={18} />
-                            </button>
+                            <Tooltip key={agent.id}>
+                              <Tooltip.Trigger className="inline-flex">
+                                <button
+                                  type="button"
+                                  aria-label={label}
+                                  className={`inline-flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    isInstalled
+                                      ? 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
+                                      : 'border-border bg-surface text-muted hover:border-border-secondary hover:bg-surface-hover hover:text-foreground'
+                                  }`}
+                                  onClick={() => void (isInstalled ? removeAgent(skill, agent.id) : addAgent(skill, agent.id))}
+                                  disabled={busy}
+                                >
+                                  <Icon size={18} />
+                                </button>
+                              </Tooltip.Trigger>
+                              <Tooltip.Content>{label}</Tooltip.Content>
+                            </Tooltip>
                           )
                         })}
                       </div>
                     </Table.Cell>
-                    <Table.Cell className="text-muted">{skill.source || '-'}</Table.Cell>
-                    <Table.Cell className="max-w-[240px] truncate font-mono text-xs text-muted">
-                      <Tooltip>
-                        <Tooltip.Trigger className="inline-flex max-w-full min-w-0 items-center gap-1">
-                          <RiFolderLine size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate">{skill.storagePath}</span>
-                        </Tooltip.Trigger>
-                        <Tooltip.Content className="max-w-md break-all font-mono text-xs">{skill.storagePath}</Tooltip.Content>
-                      </Tooltip>
+                    <Table.Cell className="text-muted">
+                      {skill.source ? (
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          {skill.provider === 'gitlab' ? (
+                            <RiGitlabLine size={16} className="shrink-0" />
+                          ) : (
+                            <RiGithubLine size={16} className="shrink-0" />
+                          )}
+                          <Tooltip>
+                            <Tooltip.Trigger className="block min-w-0 truncate text-left">{getRepositoryName(skill.source)}</Tooltip.Trigger>
+                            <Tooltip.Content className="max-w-md break-all font-mono text-xs">{skill.source}</Tooltip.Content>
+                          </Tooltip>
+                        </div>
+                      ) : (
+                        '-'
+                      )}
                     </Table.Cell>
-                    <Table.Cell className="text-muted">{skill.updatedAt ? new Date(skill.updatedAt).toLocaleString() : '-'}</Table.Cell>
+                    <Table.Cell className="whitespace-nowrap text-xs text-muted">
+                      {skill.updatedAt ? new Date(skill.updatedAt).toLocaleString() : '-'}
+                    </Table.Cell>
                     <Table.Cell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="danger-soft" onPress={() => void removeAll(skill)} isDisabled={busy}>
-                          <span className="inline-flex items-center gap-1.5">
-                            <RiDeleteBinLine size={16} />
-                            删除
-                          </span>
-                        </Button>
+                      <div className="flex gap-2">
+                        {skillsWithUpdates.includes(skill.name) && (
+                          <Tooltip>
+                            <Tooltip.Trigger className="inline-flex">
+                              <button
+                                type="button"
+                                aria-label={`更新 ${skill.name}`}
+                                className="inline-flex size-8 items-center justify-center rounded-md border border-accent/50 bg-accent-soft text-accent-soft-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => void updateSkill(skill)}
+                                disabled={busy}
+                              >
+                                <RiRefreshLine size={16} />
+                              </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Content>{`更新 ${skill.name}`}</Tooltip.Content>
+                          </Tooltip>
+                        )}
+                        <Tooltip>
+                          <Tooltip.Trigger className="inline-flex">
+                            <button
+                              type="button"
+                              aria-label={`打开 ${skill.name} 文件夹`}
+                              className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors hover:border-border-secondary hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => void openStorageFolder(skill)}
+                              disabled={busy}
+                            >
+                              <RiFolderOpenLine size={16} />
+                            </button>
+                          </Tooltip.Trigger>
+                          <Tooltip.Content>{`打开 ${skill.name} 文件夹`}</Tooltip.Content>
+                        </Tooltip>
+                        <Tooltip>
+                          <Tooltip.Trigger className="inline-flex">
+                            <button
+                              type="button"
+                              aria-label={`删除 ${skill.name}`}
+                              className="inline-flex size-8 items-center justify-center rounded-md border border-danger/30 bg-danger-soft text-danger-soft-foreground transition-colors hover:border-danger/50 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => void removeAll(skill)}
+                              disabled={busy}
+                            >
+                              <RiDeleteBinLine size={16} />
+                            </button>
+                          </Tooltip.Trigger>
+                          <Tooltip.Content>{`删除 ${skill.name}`}</Tooltip.Content>
+                        </Tooltip>
                       </div>
                     </Table.Cell>
                   </Table.Row>
@@ -194,5 +277,15 @@ function DashboardPage(): React.JSX.Element {
         </div>
       </aside>
     </section>
+  )
+}
+
+function getRepositoryName(source: string): string {
+  return (
+    source
+      .replace(/\/$/, '')
+      .replace(/\.git$/, '')
+      .split(/[/:]/)
+      .at(-1) || source
   )
 }
