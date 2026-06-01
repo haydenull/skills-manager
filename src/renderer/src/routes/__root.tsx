@@ -21,7 +21,7 @@ function RootLayout(): React.JSX.Element {
         <header className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface px-5 py-4 shadow-surface">
           <div>
             <h1 className="text-2xl font-semibold">Skills Manager</h1>
-            <p className="mt-1 text-sm text-muted">统一管理 Claude Code 与 Codex 的全局技能。</p>
+            <p className="mt-1 text-sm text-muted">统一管理 Claude Code 与 Codex 的全局 Skill。</p>
           </div>
           <nav className="flex flex-wrap gap-2">
             {NAV_ITEMS.map((item) => {

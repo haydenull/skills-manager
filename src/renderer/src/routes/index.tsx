@@ -1,17 +1,26 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button, Chip, Spinner } from '@heroui/react'
-import { RiDeleteBinLine, RiFolderLine, RiInboxLine, RiRefreshLine, RiTerminalBoxLine } from '@remixicon/react'
+import { Button, Spinner, Tooltip } from '@heroui/react'
+import {
+  RiClaudeLine,
+  RiDeleteBinLine,
+  RiFolderLine,
+  RiInboxLine,
+  RiOpenaiLine,
+  RiRefreshLine,
+  RiRobotLine,
+  RiTerminalBoxLine
+} from '@remixicon/react'
 import type { AgentId, InstalledSkill, OperationResult } from '../../../shared/skills-types'
 
 export const Route = createFileRoute('/')({
   component: DashboardPage
 })
 
-const AGENT_OPTIONS: Array<{ id: AgentId; label: string }> = [
-  { id: 'claude-code', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' }
-]
+const AGENT_OPTIONS = [
+  { id: 'claude-code', label: 'Claude Code', icon: RiClaudeLine },
+  { id: 'codex', label: 'Codex', icon: RiOpenaiLine }
+] satisfies Array<{ id: AgentId; label: string; icon: typeof RiRobotLine }>
 
 function DashboardPage(): React.JSX.Element {
   const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([])
@@ -78,8 +87,8 @@ function DashboardPage(): React.JSX.Element {
       <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-surface">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-separator px-5 py-4">
           <div>
-            <h2 className="text-base font-medium">已安装技能</h2>
-            <p className="mt-1 text-xs text-muted">此应用管理的技能，共 {installedSkills.length} 个</p>
+            <h2 className="text-base font-medium">已安装 Skill</h2>
+            <p className="mt-1 text-xs text-muted">此应用管理的 Skill，共 {installedSkills.length} 个</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {busy && (
@@ -114,39 +123,49 @@ function DashboardPage(): React.JSX.Element {
                 <tr key={skill.name} className="border-b border-separator transition-colors last:border-none hover:bg-surface-hover">
                   <td className="px-4 py-3 font-medium text-foreground">{skill.name}</td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {AGENT_OPTIONS.map((agent) => (
-                        <Chip key={agent.id} size="sm" variant={skill.agents.includes(agent.id) ? 'primary' : 'soft'}>
-                          {agent.label}
-                        </Chip>
-                      ))}
+                    <div className="flex flex-wrap gap-2">
+                      {AGENT_OPTIONS.map((agent) => {
+                        const Icon = agent.icon
+                        const isInstalled = skill.agents.includes(agent.id)
+                        const label = isInstalled ? `从 ${agent.label} 移除 ${skill.name}` : `安装 ${skill.name} 到 ${agent.label}`
+
+                        return (
+                          <button
+                            key={agent.id}
+                            type="button"
+                            aria-label={label}
+                            title={label}
+                            className={`inline-flex size-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                              isInstalled
+                                ? 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
+                                : 'border-border bg-surface text-muted hover:border-border-secondary hover:bg-surface-hover hover:text-foreground'
+                            }`}
+                            onClick={() => void (isInstalled ? removeAgent(skill, agent.id) : addAgent(skill, agent.id))}
+                            disabled={busy}
+                          >
+                            <Icon size={18} />
+                          </button>
+                        )
+                      })}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{skill.source || '-'}</td>
                   <td className="max-w-[240px] truncate px-4 py-3 font-mono text-xs text-muted">
-                    <span className="inline-flex max-w-full items-center gap-1">
-                      <RiFolderLine size={14} className="shrink-0" />
-                      <span className="truncate">{skill.storagePath}</span>
-                    </span>
+                    <Tooltip>
+                      <Tooltip.Trigger className="inline-flex max-w-full min-w-0 items-center gap-1">
+                        <RiFolderLine size={14} className="shrink-0" />
+                        <span className="min-w-0 truncate">{skill.storagePath}</span>
+                      </Tooltip.Trigger>
+                      <Tooltip.Content className="max-w-md break-all font-mono text-xs">{skill.storagePath}</Tooltip.Content>
+                    </Tooltip>
                   </td>
                   <td className="px-4 py-3 text-muted">{skill.updatedAt ? new Date(skill.updatedAt).toLocaleString() : '-'}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      {AGENT_OPTIONS.map((agent) =>
-                        skill.agents.includes(agent.id) ? (
-                          <Button key={agent.id} size="sm" variant="secondary" onPress={() => void removeAgent(skill, agent.id)} isDisabled={busy}>
-                            从 {agent.label} 移除
-                          </Button>
-                        ) : (
-                          <Button key={agent.id} size="sm" variant="primary" onPress={() => void addAgent(skill, agent.id)} isDisabled={busy}>
-                            安装到 {agent.label}
-                          </Button>
-                        )
-                      )}
                       <Button size="sm" variant="danger-soft" onPress={() => void removeAll(skill)} isDisabled={busy}>
                         <span className="inline-flex items-center gap-1.5">
                           <RiDeleteBinLine size={16} />
-                          完全删除
+                          删除
                         </span>
                       </Button>
                     </div>
@@ -158,7 +177,7 @@ function DashboardPage(): React.JSX.Element {
                   <td colSpan={6} className="px-4 py-12 text-center text-muted">
                     <div className="flex flex-col items-center gap-3">
                       <RiInboxLine size={28} />
-                      <span>还没有通过此应用安装的技能。</span>
+                      <span>还没有通过此应用安装的 Skill。</span>
                     </div>
                   </td>
                 </tr>

@@ -3,7 +3,7 @@
 ## 1. 项目概述
 
 skills-manager 是面向 Claude Code 与 Codex 用户的桌面端 skills 管理工具。
-目标是用 Electron 应用统一管理本地技能资源与相关配置。
+目标是用 Electron 应用统一管理本地 skills 资源与相关配置。
 
 ## 2. 技术栈
 

@@ -71,13 +71,13 @@ function InstallPage(): React.JSX.Element {
       setSelectedAgents([])
       return {
         ok: true,
-        logs: skills.length > 0 ? [`找到 ${skills.length} 个技能。`] : ['没有找到技能。']
+        logs: skills.length > 0 ? [`找到 ${skills.length} 个 Skill。`] : ['没有找到 Skill。']
       }
     })
   }
 
   async function installSkills(): Promise<void> {
-    await run('正在安装技能', () =>
+    await run('正在安装 Skill', () =>
       window.api.skills.install({
         source: trimmedSource,
         skills: selectedPreviewItems,
@@ -207,7 +207,7 @@ function InstallPage(): React.JSX.Element {
           >
             <div>
               <Card.Description className="text-xs text-muted">
-                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个技能。` : '先预览当前输入的 GitHub 来源。'}
+                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个 Skill。` : '先预览当前输入的 GitHub 来源。'}
               </Card.Description>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -257,9 +257,7 @@ function InstallPage(): React.JSX.Element {
                       key={skill.skillPath}
                       value={skill.skillPath}
                       className={`rounded-md border p-3 transition-colors ${
-                        isSelected
-                          ? 'border-accent/60 bg-accent-soft ring-1 ring-accent/20'
-                          : 'border-border bg-surface hover:border-border-secondary hover:bg-surface-hover'
+                        isSelected ? 'border-accent/60 bg-accent-soft ring-1 ring-accent/20' : 'border-border bg-surface'
                       }`}
                     >
                       <Checkbox.Control className="mt-0.5">
@@ -279,7 +277,7 @@ function InstallPage(): React.JSX.Element {
                           )}
                         </div>
                         <p className="mt-1 text-xs leading-5 text-muted">{skill.description}</p>
-                        <Chip className="mt-2 max-w-full font-mono text-[11px]" size="sm" variant="soft">
+                        <Chip className="mt-2 max-w-full font-mono text-[11px]" size="sm" color={isSelected ? 'accent' : 'default'} variant="soft">
                           <span className="truncate">{skill.skillPath}</span>
                         </Chip>
                       </Checkbox.Content>
@@ -289,7 +287,7 @@ function InstallPage(): React.JSX.Element {
               </CheckboxGroup>
             )}
             {!hasPreviewedSource && <EmptyState text="先预览一个 GitHub 仓库。" />}
-            {hasPreviewedSource && previews.length === 0 && <EmptyState text="当前来源没有找到技能。" />}
+            {hasPreviewedSource && previews.length === 0 && <EmptyState text="当前来源没有找到 Skill。" />}
           </Card.Content>
         </Card>
 
@@ -329,9 +327,7 @@ function InstallPage(): React.JSX.Element {
                     key={agent.id}
                     value={agent.id}
                     className={`rounded-md border p-3 transition-colors ${
-                      isSelected
-                        ? 'border-accent bg-accent-soft ring-1 ring-accent/40'
-                        : 'border-border bg-surface hover:border-border-secondary hover:bg-surface-hover'
+                      isSelected ? 'border-accent bg-accent-soft ring-1 ring-accent/40' : 'border-border bg-surface'
                     }`}
                   >
                     <Checkbox.Control>
@@ -374,7 +370,7 @@ function InstallPage(): React.JSX.Element {
                 <Card.Title className="text-base font-medium">安装</Card.Title>
               </div>
               <Card.Description className="mt-1 text-xs text-muted">
-                将 {selectedPreviewItems.length} 个技能安装到 {selectedAgents.length} 个 Agent。
+                将 {selectedPreviewItems.length} 个 Skill 安装到 {selectedAgents.length} 个 Agent。
               </Card.Description>
             </div>
             <Button variant="primary" onPress={() => void installSkills()} isDisabled={busy || !canInstall}>
