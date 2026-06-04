@@ -1,26 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Button, Spinner, useTheme } from '@heroui/react'
 import { RiFolderLine, RiMoonLine, RiSettings3Line, RiSunLine } from '@remixicon/react'
-import type { SettingsInfo } from '../../../shared/skills-types'
+import { skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage
 })
 
 function SettingsPage(): React.JSX.Element {
-  const [settings, setSettings] = useState<SettingsInfo | null>(null)
+  const settingsQuery = useQuery(skillsQueryOptions.settingsInfo())
+  const settings = settingsQuery.data
   const { resolvedTheme, setTheme, theme } = useTheme('dark')
   const currentTheme = resolvedTheme ?? theme
   const isDark = currentTheme === 'dark'
-
-  useEffect(() => {
-    async function loadSettings(): Promise<void> {
-      setSettings(await window.api.skills.getSettingsInfo())
-    }
-
-    void loadSettings()
-  }, [])
 
   if (!settings) {
     return (

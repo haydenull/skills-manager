@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Button, Card, Checkbox, CheckboxGroup, Chip, Input, Spinner, Switch } from '@heroui/react'
+import { toast } from '@heroui/react/toast'
 import {
   RiCheckLine,
   RiCheckboxMultipleLine,
@@ -14,6 +16,7 @@ import {
   RiTerminalBoxLine
 } from '@remixicon/react'
 import type { AgentId, OperationResult, SkillPreview } from '../../../shared/skills-types'
+import { skillsQueryKeys } from '../skills-queries'
 
 export const Route = createFileRoute('/install')({
   component: InstallPage
@@ -41,8 +44,15 @@ function InstallPage(): React.JSX.Element {
   const [selectedAgents, setSelectedAgents] = useState<AgentId[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const installMutation = useMutation({
+    mutationFn: window.api.skills.install
+  })
 
-  const selectedPreviewItems = useMemo(() => previews.filter((skill) => selectedPreviews.includes(skill.skillPath)), [previews, selectedPreviews])
+  const selectedPreviewItems = useMemo(
+    () => previews.filter((skill) => selectedPreviews.includes(skill.skillPath) && !skill.installState),
+    [previews, selectedPreviews]
+  )
   const trimmedSource = source.trim()
   const hasPreviewedSource = previewedSource === trimmedSource
   const currentStep = trimmedSource === '' ? 1 : !hasPreviewedSource ? 2 : selectedPreviewItems.length === 0 ? 3 : selectedAgents.length === 0 ? 4 : 5
@@ -78,14 +88,28 @@ function InstallPage(): React.JSX.Element {
   }
 
   async function installSkills(): Promise<void> {
-    await run('正在安装 Skill', () =>
-      window.api.skills.install({
+    await run('正在安装 Skill', async () => {
+      const installedCount = selectedPreviewItems.length
+      const installedAgentLabels = selectedAgentLabels.join(', ')
+      const result = await installMutation.mutateAsync({
         source: trimmedSource,
         skills: selectedPreviewItems,
         agents: selectedAgents,
         fullDepth
       })
-    )
+      await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
+      if (result.ok) {
+        const skills = await window.api.skills.previewSource(trimmedSource, fullDepth)
+        setPreviewedSource(trimmedSource)
+        setPreviews(skills)
+        setSelectedPreviews([])
+        setSelectedAgents([])
+        toast.success('安装完成', {
+          description: `已安装 ${installedCount} 个 Skill 到 ${installedAgentLabels}。`
+        })
+      }
+      return result
+    })
   }
 
   function updateSource(value: string): void {
@@ -107,6 +131,7 @@ function InstallPage(): React.JSX.Element {
 
   const busy = busyLabel !== null
   const isPreviewingSource = busyLabel === '正在预览来源'
+  const isInstalling = busyLabel === '正在安装 Skill'
   const canInstall = hasPreviewedSource && selectedPreviewItems.length > 0 && selectedAgents.length > 0
   const agentSelectionDisabled = busy || selectedPreviewItems.length === 0
   const isStepDisabled = (step: number): boolean => step > currentStep
@@ -177,7 +202,7 @@ function InstallPage(): React.JSX.Element {
             <div className="flex items-center gap-2">
               <StepBadge step={1} currentStep={currentStep} />
               <RiGithubLine size={18} className={currentStep === 1 ? 'text-accent' : 'text-muted'} />
-              <Card.Title className="text-base font-medium">输入 Git 仓库来源</Card.Title>
+              <Card.Title className="text-base font-medium">输入来源</Card.Title>
             </div>
             {busy && !isPreviewingSource && (
               <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground">
@@ -188,8 +213,8 @@ function InstallPage(): React.JSX.Element {
           </Card.Header>
           <Card.Content className="gap-0 px-5 py-4">
             <Input
-              aria-label="Repository"
-              placeholder="vercel-labs/agent-skills 或 git@gitlab.corp.youdao.com:hikari/f2e/common-components/ai-config-kit.git"
+              aria-label="Source"
+              placeholder="vercel-labs/agent-skills、git@gitlab.example.com:group/repo.git 或 ~/skills"
               value={source}
               onChange={(event) => updateSource(event.target.value)}
               disabled={busy}
@@ -218,7 +243,7 @@ function InstallPage(): React.JSX.Element {
           >
             <div className="grid gap-3">
               <Card.Description className="text-xs text-muted">
-                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个 Skill。` : '先预览当前输入的 Git 仓库来源。'}
+                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个 Skill。` : '先预览当前输入的来源。'}
               </Card.Description>
               <Switch isSelected={fullDepth} onChange={updateFullDepth} isDisabled={busy}>
                 <Switch.Control>
@@ -268,17 +293,30 @@ function InstallPage(): React.JSX.Element {
           </Card.Header>
           <Card.Content className={`gap-0 px-5 py-4 ${isStepDisabled(3) ? 'pointer-events-none select-none' : ''}`}>
             {hasPreviewedSource && previews.length > 0 && (
-              <CheckboxGroup value={selectedPreviews} onChange={setSelectedPreviews} isDisabled={busy} className="grid gap-2 md:grid-cols-2">
+              <CheckboxGroup
+                value={selectedPreviews}
+                onChange={(value) =>
+                  setSelectedPreviews(value.filter((skillPath) => !previews.find((skill) => skill.skillPath === skillPath)?.installState))
+                }
+                isDisabled={busy}
+                className="grid gap-2 md:grid-cols-2"
+              >
                 {previews.map((skill) => {
                   const isSelected = selectedPreviews.includes(skill.skillPath)
+                  const isBlocked = Boolean(skill.installState)
 
                   return (
                     <Checkbox
                       key={skill.skillPath}
                       value={skill.skillPath}
                       className={`rounded-md border p-3 transition-colors ${
-                        isSelected ? 'border-accent/60 bg-accent-soft ring-1 ring-accent/20' : 'border-border bg-surface'
+                        isBlocked
+                          ? 'cursor-not-allowed border-border bg-surface-secondary opacity-70 hover:border-border hover:bg-surface-secondary'
+                          : isSelected
+                            ? 'border-accent/60 bg-accent-soft ring-1 ring-accent/20'
+                            : 'border-border bg-surface'
                       }`}
+                      isDisabled={isBlocked}
                     >
                       <Checkbox.Control className="mt-0.5">
                         {isSelected && (
@@ -295,8 +333,19 @@ function InstallPage(): React.JSX.Element {
                               已选择
                             </Chip>
                           )}
+                          {skill.installState === 'installed' && (
+                            <Chip size="sm" variant="soft">
+                              已安装
+                            </Chip>
+                          )}
+                          {skill.installState === 'conflict' && (
+                            <Chip size="sm" color="danger" variant="soft">
+                              同名冲突
+                            </Chip>
+                          )}
                         </div>
                         <p className="mt-1 text-xs leading-5 text-muted">{skill.description}</p>
+                        {skill.installMessage && <p className="mt-1 text-xs leading-5 text-danger-soft-foreground">{skill.installMessage}</p>}
                         <Chip className="mt-2 max-w-full font-mono text-[11px]" size="sm" color={isSelected ? 'accent' : 'default'} variant="soft">
                           <span className="truncate">{skill.skillPath}</span>
                         </Chip>
@@ -306,7 +355,7 @@ function InstallPage(): React.JSX.Element {
                 })}
               </CheckboxGroup>
             )}
-            {!hasPreviewedSource && <EmptyState text="先预览一个 GitHub 或 GitLab 仓库。" />}
+            {!hasPreviewedSource && <EmptyState text="先预览一个 GitHub、GitLab 或本地目录来源。" />}
             {hasPreviewedSource && previews.length === 0 && <EmptyState text="当前来源没有找到 Skill。" />}
           </Card.Content>
         </Card>
@@ -393,11 +442,13 @@ function InstallPage(): React.JSX.Element {
                 将 {selectedPreviewItems.length} 个 Skill 安装到 {selectedAgents.length} 个 Agent。
               </Card.Description>
             </div>
-            <Button variant="primary" onPress={() => void installSkills()} isDisabled={busy || !canInstall}>
-              <span className="inline-flex items-center gap-1.5">
-                <RiDownloadLine size={16} />
-                安装
-              </span>
+            <Button variant="primary" onPress={() => void installSkills()} isDisabled={busy || !canInstall} isPending={isInstalling}>
+              {({ isPending }) => (
+                <span className="inline-flex items-center gap-1.5">
+                  {isPending ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={16} />}
+                  安装
+                </span>
+              )}
             </Button>
           </Card.Content>
         </Card>

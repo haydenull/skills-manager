@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Chip, Spinner, Table, Tooltip } from '@heroui/react'
 import {
   RiClaudeLine,
   RiDeleteBinLine,
+  RiFolderLine,
   RiFolderOpenLine,
   RiGithubLine,
   RiGitlabLine,
@@ -14,6 +15,7 @@ import {
   RiTerminalBoxLine
 } from '@remixicon/react'
 import type { AgentId, InstalledSkill, OperationResult } from '../../../shared/skills-types'
+import { skillsQueryKeys, skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/')({
   component: DashboardPage
@@ -24,44 +26,55 @@ const AGENT_OPTIONS = [
   { id: 'codex', label: 'Codex', icon: RiOpenaiLine }
 ] satisfies Array<{ id: AgentId; label: string; icon: typeof RiRobotLine }>
 
+const REFRESH_SKILLS_LABEL = '正在刷新 Skill'
+
+type OperationMutationVariables = {
+  label: string
+  action: () => Promise<OperationResult | void>
+  invalidateUpdates: boolean
+  showDefaultResult: boolean
+}
+
 function DashboardPage(): React.JSX.Element {
-  const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([])
-  const [skillsWithUpdates, setSkillsWithUpdates] = useState<string[]>([])
-  const [logs, setLogs] = useState<string[]>([])
-  const [busyLabel, setBusyLabel] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    void refreshSkills()
-  }, [])
+  const { data: installedSkills = [], refetch: refetchInstalledSkills } = useQuery(skillsQueryOptions.installed())
+  const installedSkillNames = installedSkills.map((skill) => skill.name)
+  const { data: updateStatuses = [] } = useQuery({
+    ...skillsQueryOptions.updates(installedSkillNames),
+    enabled: installedSkillNames.length > 0
+  })
+  const skillsWithUpdates = updateStatuses.filter((status) => status.hasUpdate).map((status) => status.name)
+  const updateErrors = updateStatuses.flatMap((status) => (status.error ? [status.error] : []))
 
-  async function run(label: string, action: () => Promise<OperationResult | void>): Promise<void> {
-    setBusyLabel(label)
-    setLogs([`${label}...`])
-
-    try {
+  const operationMutation = useMutation({
+    mutationFn: async ({ action, invalidateUpdates }: OperationMutationVariables) => {
       const result = await action()
-      if (result) {
-        setLogs(result.logs.length > 0 ? result.logs : [result.ok ? '完成。' : '失败。'])
-      }
-      await refreshSkills()
-    } catch (error) {
-      setLogs([error instanceof Error ? error.message : String(error)])
-    } finally {
-      setBusyLabel(null)
+      await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
+      if (invalidateUpdates) await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.updatesRoot })
+      return result
     }
+  })
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const installedResult = await refetchInstalledSkills()
+      const names = installedResult.data?.map((skill) => skill.name) ?? []
+      const statuses = names.length > 0 ? await queryClient.fetchQuery(skillsQueryOptions.updates(names)) : []
+      return statuses.flatMap((status) => (status.error ? [status.error] : []))
+    }
+  })
+
+  function run(label: string, action: () => Promise<OperationResult | void>, invalidateUpdates = false, showDefaultResult = true): void {
+    operationMutation.mutate({ label, action, invalidateUpdates, showDefaultResult })
   }
 
-  async function refreshSkills(): Promise<void> {
-    const skills = await window.api.skills.listGlobal()
-    setInstalledSkills(skills)
-    const statuses = await window.api.skills.checkUpdates(skills.map((skill) => skill.name))
-    setSkillsWithUpdates(statuses.filter((status) => status.hasUpdate).map((status) => status.name))
-    const errors = statuses.flatMap((status) => (status.error ? [status.error] : []))
-    if (errors.length > 0) setLogs(errors)
+  function refreshSkillsWithFeedback(): void {
+    refreshMutation.mutate()
   }
 
-  async function addAgent(skill: InstalledSkill, agent: AgentId): Promise<void> {
-    await run(`正在安装 ${skill.name}`, () =>
+  function addAgent(skill: InstalledSkill, agent: AgentId): void {
+    run(`正在安装 ${skill.name}`, () =>
       window.api.skills.addAgents({
         names: [skill.name],
         agents: [agent]
@@ -69,8 +82,8 @@ function DashboardPage(): React.JSX.Element {
     )
   }
 
-  async function removeAgent(skill: InstalledSkill, agent: AgentId): Promise<void> {
-    await run(`正在移除 ${skill.name}`, () =>
+  function removeAgent(skill: InstalledSkill, agent: AgentId): void {
+    run(`正在移除 ${skill.name}`, () =>
       window.api.skills.remove({
         names: [skill.name],
         agents: [agent]
@@ -78,8 +91,8 @@ function DashboardPage(): React.JSX.Element {
     )
   }
 
-  async function removeAll(skill: InstalledSkill): Promise<void> {
-    await run(`正在完全删除 ${skill.name}`, () =>
+  function removeAll(skill: InstalledSkill): void {
+    run(`正在完全删除 ${skill.name}`, () =>
       window.api.skills.remove({
         names: [skill.name],
         agents: []
@@ -87,20 +100,42 @@ function DashboardPage(): React.JSX.Element {
     )
   }
 
-  async function updateSkill(skill: InstalledSkill): Promise<void> {
-    await run(`正在更新 ${skill.name}`, () => window.api.skills.update([skill.name]))
+  function updateSkill(skill: InstalledSkill): void {
+    run(`正在更新 ${skill.name}`, () => window.api.skills.update([skill.name]), true)
   }
 
-  async function openStorageFolder(skill: InstalledSkill): Promise<void> {
-    try {
-      const result = await window.api.skills.openStorageFolder(skill.name)
-      if (!result.ok) setLogs(result.logs)
-    } catch (error) {
-      setLogs([error instanceof Error ? error.message : String(error)])
+  function openStorageFolder(skill: InstalledSkill): void {
+    run(`正在打开 ${skill.name} 文件夹`, () => window.api.skills.openStorageFolder(skill.name), false, false)
+  }
+
+  const busy = operationMutation.isPending || refreshMutation.isPending
+  const busyLabel = operationMutation.isPending ? operationMutation.variables.label : refreshMutation.isPending ? REFRESH_SKILLS_LABEL : null
+  const isRefreshing = refreshMutation.isPending
+  const displayedLogs = (() => {
+    const operationIsLatest = operationMutation.submittedAt > 0 && operationMutation.submittedAt >= refreshMutation.submittedAt
+    const refreshIsLatest = refreshMutation.submittedAt > 0 && refreshMutation.submittedAt > operationMutation.submittedAt
+
+    if (operationIsLatest) {
+      if (operationMutation.isPending) {
+        return [`${operationMutation.variables.label}...`]
+      }
+      if (operationMutation.isError) {
+        return [operationMutation.error instanceof Error ? operationMutation.error.message : String(operationMutation.error)]
+      }
+      if (operationMutation.isSuccess && operationMutation.data) {
+        if (operationMutation.data.logs.length > 0) return operationMutation.data.logs
+        if (operationMutation.variables.showDefaultResult) return [operationMutation.data.ok ? '完成。' : '失败。']
+      }
     }
-  }
 
-  const busy = busyLabel !== null
+    if (refreshIsLatest) {
+      if (refreshMutation.isPending) return [`${REFRESH_SKILLS_LABEL}...`]
+      if (refreshMutation.isError) return [refreshMutation.error instanceof Error ? refreshMutation.error.message : String(refreshMutation.error)]
+      if (refreshMutation.isSuccess) return refreshMutation.data.length > 0 ? refreshMutation.data : ['刷新完成。']
+    }
+
+    return updateErrors
+  })()
 
   return (
     <section className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -111,17 +146,19 @@ function DashboardPage(): React.JSX.Element {
             <p className="mt-1 text-xs text-muted">此应用管理的 Skill，共 {installedSkills.length} 个</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {busy && (
+            {busy && !isRefreshing && (
               <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground">
                 <Spinner size="sm" />
                 <span>{busyLabel}</span>
               </div>
             )}
-            <Button size="sm" variant="secondary" onPress={() => void refreshSkills()} isDisabled={busy}>
-              <span className="inline-flex items-center gap-1.5">
-                <RiRefreshLine size={16} />
-                刷新
-              </span>
+            <Button size="sm" variant="secondary" onPress={() => void refreshSkillsWithFeedback()} isDisabled={busy} isPending={isRefreshing}>
+              {({ isPending }) => (
+                <span className="inline-flex items-center gap-1.5">
+                  {isPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
+                  刷新
+                </span>
+              )}
             </Button>
           </div>
         </div>
@@ -135,7 +172,7 @@ function DashboardPage(): React.JSX.Element {
                 </Table.Column>
                 <Table.Column className="w-24">Agent</Table.Column>
                 <Table.Column className="w-40">来源</Table.Column>
-                <Table.Column className="w-40">更新时间</Table.Column>
+                <Table.Column className="w-40">安装时间</Table.Column>
                 <Table.Column className="w-32">操作</Table.Column>
               </Table.Header>
               <Table.Body
@@ -194,7 +231,9 @@ function DashboardPage(): React.JSX.Element {
                     <Table.Cell className="text-muted">
                       {skill.source ? (
                         <div className="flex min-w-0 items-center gap-1.5">
-                          {skill.provider === 'gitlab' ? (
+                          {skill.provider === 'local' ? (
+                            <RiFolderLine size={16} className="shrink-0" />
+                          ) : skill.provider === 'gitlab' ? (
                             <RiGitlabLine size={16} className="shrink-0" />
                           ) : (
                             <RiGithubLine size={16} className="shrink-0" />
@@ -209,26 +248,10 @@ function DashboardPage(): React.JSX.Element {
                       )}
                     </Table.Cell>
                     <Table.Cell className="whitespace-nowrap text-xs text-muted">
-                      {skill.updatedAt ? new Date(skill.updatedAt).toLocaleString() : '-'}
+                      {skill.installedAt ? new Date(skill.installedAt).toLocaleString() : '-'}
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex gap-2">
-                        {skillsWithUpdates.includes(skill.name) && (
-                          <Tooltip>
-                            <Tooltip.Trigger className="inline-flex">
-                              <button
-                                type="button"
-                                aria-label={`更新 ${skill.name}`}
-                                className="inline-flex size-8 items-center justify-center rounded-md border border-accent/50 bg-accent-soft text-accent-soft-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => void updateSkill(skill)}
-                                disabled={busy}
-                              >
-                                <RiRefreshLine size={16} />
-                              </button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Content>{`更新 ${skill.name}`}</Tooltip.Content>
-                          </Tooltip>
-                        )}
                         <Tooltip>
                           <Tooltip.Trigger className="inline-flex">
                             <button
@@ -257,6 +280,22 @@ function DashboardPage(): React.JSX.Element {
                           </Tooltip.Trigger>
                           <Tooltip.Content>{`删除 ${skill.name}`}</Tooltip.Content>
                         </Tooltip>
+                        {skillsWithUpdates.includes(skill.name) && (
+                          <Tooltip>
+                            <Tooltip.Trigger className="inline-flex">
+                              <button
+                                type="button"
+                                aria-label={`更新 ${skill.name}`}
+                                className="inline-flex size-8 items-center justify-center rounded-md border border-accent/50 bg-accent-soft text-accent-soft-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => void updateSkill(skill)}
+                                disabled={busy}
+                              >
+                                <RiRefreshLine size={16} />
+                              </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Content>{`更新 ${skill.name}`}</Tooltip.Content>
+                          </Tooltip>
+                        )}
                       </div>
                     </Table.Cell>
                   </Table.Row>
@@ -273,7 +312,7 @@ function DashboardPage(): React.JSX.Element {
           <h2 className="text-base font-medium">操作日志</h2>
         </div>
         <div className="mt-3 min-h-32 rounded-md border border-border bg-surface-secondary p-3 font-mono text-xs leading-5 text-muted">
-          {logs.length > 0 ? logs.map((line, index) => <div key={`${line}-${index}`}>{line}</div>) : '暂无操作记录。'}
+          {displayedLogs.length > 0 ? displayedLogs.map((line, index) => <div key={`${line}-${index}`}>{line}</div>) : '暂无操作记录。'}
         </div>
       </aside>
     </section>

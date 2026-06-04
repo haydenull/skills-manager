@@ -2,8 +2,8 @@ import { app, shell } from 'electron'
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { homedir, tmpdir } from 'os'
-import { dirname, join, resolve, sep } from 'path'
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises'
+import { dirname, isAbsolute, join, resolve, sep } from 'path'
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'fs/promises'
 import { promisify } from 'util'
 import { parse } from 'yaml'
 import type {
@@ -18,11 +18,12 @@ import type {
   SkillUpdateStatus
 } from '../shared/skills-types'
 
-type SourceProvider = 'github' | 'gitlab'
+type SourceProvider = 'github' | 'gitlab' | 'local'
 
 type SourceInfo = {
   provider: SourceProvider
-  repositoryUrl: string
+  repositoryUrl?: string
+  localPath?: string
   owner?: string
   repo?: string
   ref?: string
@@ -60,6 +61,7 @@ type LockEntry = {
   source: string
   provider?: SourceProvider
   repositoryUrl?: string
+  localPath?: string
   owner?: string
   repo?: string
   ref?: string
@@ -68,7 +70,6 @@ type LockEntry = {
   agents: AgentId[]
   storagePath: string
   installedAt: string
-  updatedAt: string
 }
 
 type LockFile = {
@@ -128,7 +129,7 @@ export class SkillsService {
         agents: skill.agents,
         source: skill.source,
         provider: skill.provider,
-        updatedAt: skill.updatedAt
+        installedAt: skill.installedAt
       }))
   }
 
@@ -145,7 +146,11 @@ export class SkillsService {
 
   async previewSource(source: string, fullDepth = false): Promise<SkillPreview[]> {
     const sourceInfo = await this.resolveSource(source)
-    return this.withRepositorySnapshot(sourceInfo, (snapshot) => this.parseSkillsFromSnapshot(snapshot, fullDepth))
+    return this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
+      const previews = await this.parseSkillsFromSnapshot(snapshot, fullDepth)
+      const lock = await this.readLock()
+      return this.markInstallState(previews, snapshot.source, lock)
+    })
   }
 
   async install(request: InstallRequest): Promise<OperationResult> {
@@ -163,6 +168,15 @@ export class SkillsService {
         }
 
         const lock = await this.readLock()
+        const invalidSkill = selectedSkills.map((skill) => this.getInstallState(skill, snapshot.source, lock)).find((state) => state.installState)
+
+        if (selectedSkills.length !== selectedPaths.size) {
+          return { ok: false, logs: ['Some selected skills were not found in the source repository.'] }
+        }
+
+        if (invalidSkill) {
+          return { ok: false, logs: [invalidSkill.installMessage!] }
+        }
 
         for (const skill of selectedSkills) {
           const skillName = sanitizeName(skill.name)
@@ -183,6 +197,7 @@ export class SkillsService {
             source: formatSource(snapshot.source),
             provider: snapshot.source.provider,
             repositoryUrl: snapshot.source.repositoryUrl,
+            localPath: snapshot.source.localPath,
             owner: snapshot.source.owner,
             repo: snapshot.source.repo,
             ref: snapshot.source.provider === 'github' ? snapshot.source.ref : undefined,
@@ -190,8 +205,7 @@ export class SkillsService {
             folderSha: skill.folderSha,
             agents: request.agents,
             storagePath,
-            installedAt: lock.skills[skillName]?.installedAt || now,
-            updatedAt: now
+            installedAt: now
           }
         }
 
@@ -222,7 +236,6 @@ export class SkillsService {
       }
 
       entry.agents = Array.from(new Set([...entry.agents, ...request.agents]))
-      entry.updatedAt = new Date().toISOString()
     }
 
     await this.writeLock(lock)
@@ -262,9 +275,9 @@ export class SkillsService {
           await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), sanitizeName(entry.name)))
         }
 
-        entry.ref = snapshot.source.ref!
+        if (snapshot.source.provider === 'github') entry.ref = snapshot.source.ref!
         entry.folderSha = preview.folderSha
-        entry.updatedAt = new Date().toISOString()
+        entry.installedAt = new Date().toISOString()
         updated += 1
         logs.push(`Updated ${entry.name}.`)
       })
@@ -370,8 +383,39 @@ export class SkillsService {
     await writeFile(this.getLockPath(), JSON.stringify(lock, null, 2) + '\n', 'utf-8')
   }
 
+  private markInstallState(skills: SkillPreview[], source: SourceInfo, lock: LockFile): SkillPreview[] {
+    return skills.map((skill) => ({
+      ...skill,
+      ...this.getInstallState(skill, source, lock)
+    }))
+  }
+
+  private getInstallState(skill: SkillPreview, source: SourceInfo, lock: LockFile): Pick<SkillPreview, 'installState' | 'installMessage'> {
+    const entry = lock.skills[sanitizeName(skill.name)]
+    if (!entry) return {}
+
+    if (isSameSource(source, getLockEntrySource(entry))) {
+      return {
+        installState: 'installed',
+        installMessage: `${skill.name} 已安装。`
+      }
+    }
+
+    return {
+      installState: 'conflict',
+      installMessage: `${skill.name} 与已安装 Skill 同名，已安装来源：${entry.source}。`
+    }
+  }
+
   private async resolveSource(input: string): Promise<SourceInfo> {
     const trimmed = input.trim()
+    const localPath = resolveLocalPath(trimmed)
+    if (localPath) {
+      const stats = await stat(localPath)
+      if (!stats.isDirectory()) throw new Error('Local skill source must be a directory.')
+      return { provider: 'local', localPath }
+    }
+
     const githubUrlMatch = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?\/?$/)
     const shorthandMatch = trimmed.match(/^([^/]+)\/([^/]+)$/)
 
@@ -411,11 +455,13 @@ export class SkillsService {
     try {
       return await callback(snapshot)
     } finally {
-      if ('rootPath' in snapshot) await cleanupTempDir(snapshot.rootPath)
+      if ('rootPath' in snapshot && source.provider !== 'local') await cleanupTempDir(snapshot.rootPath)
     }
   }
 
   private async fetchRepositorySnapshot(source: SourceInfo): Promise<RepositorySnapshot> {
+    if (source.provider === 'local') return { source, rootPath: source.localPath! }
+
     if (source.provider === 'github') {
       const tree = await this.fetchGitHubTree(source)
       if (tree) return { source, tree }
@@ -529,6 +575,9 @@ export class SkillsService {
     const skillDir = dirname(skill.skillPath)
     const sourcePath = skillDir === '.' ? rootPath : join(rootPath, skillDir)
     if (!isInside(rootPath, sourcePath)) throw new Error(`Unsafe skill path from repository: ${skill.skillPath}`)
+    if (isInside(sourcePath, storagePath) || isInside(storagePath, sourcePath)) {
+      throw new Error('Local skill source cannot overlap the app storage directory.')
+    }
 
     await rm(storagePath, { recursive: true, force: true })
     await copySkillDirectory(sourcePath, storagePath)
@@ -677,8 +726,29 @@ function sanitizeName(name: string): string {
   return safe
 }
 
+function resolveLocalPath(input: string): string | null {
+  if (input === '~') return homedir()
+  if (/^~[\\/]/.test(input)) return resolve(homedir(), input.slice(2))
+  return isAbsolute(input) ? resolve(input) : null
+}
+
 function formatSource(source: SourceInfo): string {
-  return source.provider === 'github' ? `${source.owner}/${source.repo}` : source.repositoryUrl
+  if (source.provider === 'github') return `${source.owner}/${source.repo}`
+  return source.provider === 'local' ? source.localPath! : source.repositoryUrl!
+}
+
+function isSameSource(a: SourceInfo, b: SourceInfo): boolean {
+  if (a.provider !== b.provider) return false
+
+  if (a.provider === 'github') {
+    return a.owner?.toLowerCase() === b.owner?.toLowerCase() && a.repo?.toLowerCase() === b.repo?.toLowerCase()
+  }
+
+  if (a.provider === 'local') {
+    return resolve(a.localPath!) === resolve(b.localPath!)
+  }
+
+  return a.repositoryUrl === b.repositoryUrl
 }
 
 function resolveGitLabSource(input: string): SourceInfo {
@@ -699,6 +769,11 @@ function resolveGitLabSource(input: string): SourceInfo {
 }
 
 function getLockEntrySource(entry: LockEntry): SourceInfo {
+  if (entry.provider === 'local') {
+    if (!entry.localPath) throw new Error(`Invalid local source for ${entry.name}.`)
+    return { provider: 'local', localPath: entry.localPath }
+  }
+
   if (entry.provider === 'gitlab') {
     if (!entry.repositoryUrl) throw new Error(`Invalid GitLab source for ${entry.name}.`)
     if (!entry.repositoryUrl.startsWith('git@')) {
@@ -733,7 +808,7 @@ async function cloneRepository(source: SourceInfo): Promise<string> {
   const tempPath = await mkdtemp(join(tmpdir(), 'skills-manager-'))
   const args = ['clone', '--depth', '1']
   if (source.ref && source.ref !== 'HEAD') args.push('--branch', source.ref)
-  args.push(source.repositoryUrl, tempPath)
+  args.push(source.repositoryUrl!, tempPath)
 
   try {
     await execFileAsync('git', args, {

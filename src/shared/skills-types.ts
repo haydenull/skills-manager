@@ -5,8 +5,8 @@ export type InstalledSkill = {
   storagePath: string
   agents: AgentId[]
   source?: string
-  provider?: 'github' | 'gitlab'
-  updatedAt?: string
+  provider?: 'github' | 'gitlab' | 'local'
+  installedAt?: string
 }
 
 export type SkillUpdateStatus = {
@@ -20,6 +20,8 @@ export type SkillPreview = {
   description: string
   skillPath: string
   folderSha: string | null
+  installState?: 'installed' | 'conflict'
+  installMessage?: string
 }
 
 export type InstallRequest = {

@@ -4,9 +4,9 @@ skills-manager 是面向 Claude Code 与 Codex 用户的桌面端 skills 管理�
 
 ## 功能概览
 
-- 从 GitHub 或自部署 GitLab 仓库预览可安装的 skills。
+- 从 GitHub、自部署 GitLab 仓库或本地目录预览可安装的 skills。
 - 将选中的 skills 安装到 Claude Code、Codex 或两者。
-- 查看由本应用管理的已安装 skills、来源、存储路径和更新时间。
+- 查看由本应用管理的已安装 skills、来源、存储路径和安装时间。
 - 更新已安装 skills，并同步到对应 agent 的 skills 目录。
 - 从指定 agent 或应用存储中移除 skills。
 - 在界面中查看安装、更新、移除等操作日志。
@@ -120,5 +120,7 @@ src/
 
 - GitHub 支持 `owner/repo` 简写和完整仓库 URL。
 - 自部署 GitLab 支持 SSH clone 地址，例如 `git@gitlab.example.com:group/subgroup/repo.git`。
+- 本地目录支持绝对路径和当前用户 home 目录下的 `~` 路径，例如 `/Users/me/skills` 或 `~/skills`。
+- 本地目录可以是单个 skill 目录，也可以是包含多个 skills 的集合目录。
 - GitLab 仅使用仓库默认分支，不支持指定分支、Tag 或子目录。
 - GitLab 私有仓库使用本机已配置的 SSH Key。请预先配置 `ssh-agent` 和 `known_hosts`。
