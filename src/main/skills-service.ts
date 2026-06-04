@@ -1,4 +1,4 @@
-import { app, shell } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { homedir, tmpdir } from 'os'
@@ -14,6 +14,7 @@ import type {
   OperationResult,
   RemoveRequest,
   SettingsInfo,
+  SettingsFolderTarget,
   SkillPreview,
   SkillUpdateStatus
 } from '../shared/skills-types'
@@ -70,6 +71,7 @@ type LockEntry = {
   agents: AgentId[]
   storagePath: string
   installedAt: string
+  debugPath?: string
 }
 
 type LockFile = {
@@ -121,16 +123,25 @@ export class SkillsService {
   async listGlobal(): Promise<InstalledSkill[]> {
     const lock = await this.readLock()
 
-    return Object.values(lock.skills)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((skill) => ({
-        name: skill.name,
-        storagePath: skill.storagePath,
-        agents: skill.agents,
-        source: skill.source,
-        provider: skill.provider,
-        installedAt: skill.installedAt
-      }))
+    const skills = await Promise.all(
+      Object.values(lock.skills).map(async (skill) => {
+        const skillMd = await readFile(join(skill.debugPath || skill.storagePath, 'SKILL.md'), 'utf-8')
+        const metadata = parseSkillMetadata(skillMd)
+
+        return {
+          name: skill.name,
+          description: metadata.description,
+          storagePath: skill.storagePath,
+          agents: skill.agents,
+          source: skill.source,
+          provider: skill.provider,
+          installedAt: skill.installedAt,
+          debugPath: skill.debugPath
+        }
+      })
+    )
+
+    return skills.sort((a, b) => a.name.localeCompare(b.name))
   }
 
   getSettingsInfo(): SettingsInfo {
@@ -230,8 +241,9 @@ export class SkillsService {
         continue
       }
 
+      const sourcePath = entry.debugPath || entry.storagePath
       for (const agent of request.agents) {
-        await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), skillName))
+        await this.linkOrCopy(sourcePath, join(AGENTS[agent].dir(), skillName))
         logs.push(`Linked ${entry.name} for ${AGENTS[agent].displayName}.`)
       }
 
@@ -271,8 +283,12 @@ export class SkillsService {
         }
 
         await this.writeSkillFolderFromSnapshot(snapshot, preview, entry.storagePath)
-        for (const agent of entry.agents) {
-          await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), sanitizeName(entry.name)))
+        if (entry.debugPath) {
+          logs.push(`Kept ${entry.name} in debug mode.`)
+        } else {
+          for (const agent of entry.agents) {
+            await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), sanitizeName(entry.name)))
+          }
         }
 
         if (snapshot.source.provider === 'github') entry.ref = snapshot.source.ref!
@@ -347,12 +363,62 @@ export class SkillsService {
     return { ok: true, logs }
   }
 
+  async startDebug(name: string): Promise<OperationResult> {
+    const lock = await this.readLock()
+    const skillName = sanitizeName(name)
+    const entry = lock.skills[skillName]
+    if (!entry) return { ok: false, logs: [`Unable to debug ${name}: not installed by this app.`] }
+
+    const result = await dialog.showOpenDialog({
+      title: `选择 ${entry.name} 的调试 Skill 目录`,
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return { ok: true, logs: ['未选择调试目录。'] }
+
+    const debugPath = result.filePaths[0]
+    try {
+      await validateDebugSkillPath(entry, debugPath)
+    } catch (error) {
+      return { ok: false, logs: [getErrorMessage(error)] }
+    }
+
+    entry.debugPath = debugPath
+    for (const agent of entry.agents) {
+      await this.linkOrCopy(debugPath, join(AGENTS[agent].dir(), skillName))
+    }
+    await this.writeLock(lock)
+    return { ok: true, logs: [`${entry.name} 已切换到调试目录：${debugPath}`] }
+  }
+
+  async stopDebug(name: string): Promise<OperationResult> {
+    const lock = await this.readLock()
+    const skillName = sanitizeName(name)
+    const entry = lock.skills[skillName]
+    if (!entry) return { ok: false, logs: [`Unable to stop debug for ${name}: not installed by this app.`] }
+
+    for (const agent of entry.agents) {
+      await this.linkOrCopy(entry.storagePath, join(AGENTS[agent].dir(), skillName))
+    }
+    delete entry.debugPath
+    await this.writeLock(lock)
+    return { ok: true, logs: [`${entry.name} 已恢复正式版本。`] }
+  }
+
   async openStorageFolder(name: string): Promise<OperationResult> {
     const entry = (await this.readLock()).skills[sanitizeName(name)]
     if (!entry) return { ok: false, logs: [`Unable to open ${name}: not installed by this app.`] }
 
-    const error = await shell.openPath(entry.storagePath)
+    const error = await shell.openPath(entry.debugPath || entry.storagePath)
     return error ? { ok: false, logs: [`Unable to open ${name}: ${error}`] } : { ok: true, logs: [] }
+  }
+
+  async openSettingsFolder(target: SettingsFolderTarget, agentId?: AgentId): Promise<OperationResult> {
+    const folderPath = target === 'app-data' ? this.getUserDataPath() : agentId ? AGENTS[agentId]?.dir() : undefined
+    if (!folderPath) return { ok: false, logs: ['Unable to resolve settings folder.'] }
+
+    await mkdir(folderPath, { recursive: true })
+    const error = await shell.openPath(folderPath)
+    return error ? { ok: false, logs: [`Unable to open ${folderPath}: ${error}`] } : { ok: true, logs: [] }
   }
 
   private getUserDataPath(): string {
@@ -789,6 +855,17 @@ function getLockEntrySource(entry: LockEntry): SourceInfo {
     owner: entry.owner,
     repo: entry.repo,
     ref: entry.ref
+  }
+}
+
+async function validateDebugSkillPath(entry: LockEntry, debugPath: string): Promise<void> {
+  const stats = await stat(debugPath)
+  if (!stats.isDirectory()) throw new Error('调试路径必须是目录。')
+
+  const skillMd = await readFile(join(debugPath, 'SKILL.md'), 'utf-8')
+  const metadata = parseSkillMetadata(skillMd)
+  if (sanitizeName(metadata.name) !== sanitizeName(entry.name)) {
+    throw new Error(`调试目录中的 Skill 名称必须是 ${entry.name}。`)
   }
 }
 

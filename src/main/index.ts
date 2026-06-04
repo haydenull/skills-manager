@@ -67,7 +67,10 @@ app.whenReady().then(() => {
   ipcMain.handle('skills:check-updates', (_event, names: string[]) => skillsService.checkUpdates(names))
   ipcMain.handle('skills:update', (_event, names: string[]) => skillsService.update(names))
   ipcMain.handle('skills:remove', (_event, request) => skillsService.remove(request))
+  ipcMain.handle('skills:start-debug', (_event, name: string) => skillsService.startDebug(name))
+  ipcMain.handle('skills:stop-debug', (_event, name: string) => skillsService.stopDebug(name))
   ipcMain.handle('skills:open-storage-folder', (_event, name: string) => skillsService.openStorageFolder(name))
+  ipcMain.handle('skills:open-settings-folder', (_event, target, agentId) => skillsService.openSettingsFolder(target, agentId))
 
   createWindow()
 

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { AgentUpdateRequest, InstallRequest, RemoveRequest } from '../shared/skills-types'
+import type { AgentId, AgentUpdateRequest, InstallRequest, RemoveRequest, SettingsFolderTarget } from '../shared/skills-types'
 
 // Custom APIs for renderer
 const api = {
@@ -13,7 +13,10 @@ const api = {
     checkUpdates: (names: string[]) => ipcRenderer.invoke('skills:check-updates', names),
     update: (names: string[]) => ipcRenderer.invoke('skills:update', names),
     remove: (request: RemoveRequest) => ipcRenderer.invoke('skills:remove', request),
-    openStorageFolder: (name: string) => ipcRenderer.invoke('skills:open-storage-folder', name)
+    startDebug: (name: string) => ipcRenderer.invoke('skills:start-debug', name),
+    stopDebug: (name: string) => ipcRenderer.invoke('skills:stop-debug', name),
+    openStorageFolder: (name: string) => ipcRenderer.invoke('skills:open-storage-folder', name),
+    openSettingsFolder: (target: SettingsFolderTarget, agentId?: AgentId) => ipcRenderer.invoke('skills:open-settings-folder', target, agentId)
   }
 }
 

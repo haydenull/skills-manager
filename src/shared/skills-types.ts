@@ -1,12 +1,15 @@
 export type AgentId = 'claude-code' | 'codex'
+export type SettingsFolderTarget = 'app-data' | 'agent-skills'
 
 export type InstalledSkill = {
   name: string
+  description: string
   storagePath: string
   agents: AgentId[]
   source?: string
   provider?: 'github' | 'gitlab' | 'local'
   installedAt?: string
+  debugPath?: string
 }
 
 export type SkillUpdateStatus = {
