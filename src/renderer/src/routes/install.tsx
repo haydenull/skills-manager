@@ -16,6 +16,7 @@ import {
   RiTerminalBoxLine
 } from '@remixicon/react'
 import type { AgentId, OperationResult, SkillPreview } from '../../../shared/skills-types'
+import { cn } from '../lib/cn'
 import { skillsQueryKeys } from '../skills-queries'
 
 export const Route = createFileRoute('/install')({
@@ -160,23 +161,26 @@ function InstallPage(): React.JSX.Element {
                   return (
                     <div
                       key={item.label}
-                      className={`min-w-0 rounded-md border px-3 py-2.5 transition-colors ${
+                      className={cn(
+                        'min-w-0 rounded-md border px-3 py-2.5 transition-colors',
                         isActive
                           ? 'border-accent/60 bg-accent-soft text-accent-soft-foreground ring-1 ring-accent/20'
                           : isDone
                             ? 'border-accent/35 bg-accent-soft/60 text-accent-soft-foreground'
-                            : 'border-border bg-surface-secondary text-muted'
-                      } ${isDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                            : 'border-border bg-surface-secondary text-muted',
+                        isDisabled && 'cursor-not-allowed opacity-50'
+                      )}
                     >
                       <div className="flex items-center gap-2">
                         <div
-                          className={`flex size-7 shrink-0 items-center justify-center rounded-full border ${
+                          className={cn(
+                            'flex size-7 shrink-0 items-center justify-center rounded-full border',
                             isActive
                               ? 'border-accent bg-accent text-accent-foreground'
                               : isDone
                                 ? 'border-accent bg-accent text-accent-foreground'
                                 : 'border-border bg-surface text-muted'
-                          }`}
+                          )}
                         >
                           {isDone ? <RiCheckLine size={14} /> : <Icon size={14} />}
                         </div>
@@ -194,9 +198,10 @@ function InstallPage(): React.JSX.Element {
         </Card>
 
         <Card
-          className={`gap-0 overflow-hidden rounded-lg border bg-surface p-0 ${
+          className={cn(
+            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
             currentStep === 1 ? 'border-accent/60' : currentStep > 1 ? 'border-accent/35' : 'border-border'
-          }`}
+          )}
         >
           <Card.Header className="!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5">
             <div className="flex items-center gap-2">
@@ -223,14 +228,17 @@ function InstallPage(): React.JSX.Element {
         </Card>
 
         <Card
-          className={`gap-0 overflow-hidden rounded-lg border bg-surface p-0 ${
-            currentStep === 2 ? 'border-accent/60' : currentStep > 2 ? 'border-accent/35' : 'border-border'
-          } ${isStepDisabled(2) ? 'cursor-not-allowed opacity-50' : ''}`}
+          className={cn(
+            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
+            currentStep === 2 ? 'border-accent/60' : currentStep > 2 ? 'border-accent/35' : 'border-border',
+            isStepDisabled(2) && 'cursor-not-allowed opacity-50'
+          )}
         >
           <Card.Header
-            className={`!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5 ${
-              isStepDisabled(2) ? 'pointer-events-none select-none' : ''
-            }`}
+            className={cn(
+              '!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5',
+              isStepDisabled(2) && 'pointer-events-none select-none'
+            )}
           >
             <div className="flex items-center gap-2">
               <StepBadge step={2} currentStep={currentStep} />
@@ -239,7 +247,7 @@ function InstallPage(): React.JSX.Element {
             </div>
           </Card.Header>
           <Card.Content
-            className={`!flex-row !items-center justify-between gap-3 px-5 py-4 ${isStepDisabled(2) ? 'pointer-events-none select-none' : ''}`}
+            className={cn('!flex-row !items-center justify-between gap-3 px-5 py-4', isStepDisabled(2) && 'pointer-events-none select-none')}
           >
             <div className="grid gap-3">
               <Card.Description className="text-xs text-muted">
@@ -273,14 +281,17 @@ function InstallPage(): React.JSX.Element {
         </Card>
 
         <Card
-          className={`gap-0 overflow-hidden rounded-lg border bg-surface p-0 ${
-            currentStep === 3 ? 'border-accent/60' : currentStep > 3 ? 'border-accent/35' : 'border-border'
-          } ${isStepDisabled(3) ? 'cursor-not-allowed opacity-50' : ''}`}
+          className={cn(
+            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
+            currentStep === 3 ? 'border-accent/60' : currentStep > 3 ? 'border-accent/35' : 'border-border',
+            isStepDisabled(3) && 'cursor-not-allowed opacity-50'
+          )}
         >
           <Card.Header
-            className={`!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5 ${
-              isStepDisabled(3) ? 'pointer-events-none select-none' : ''
-            }`}
+            className={cn(
+              '!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5',
+              isStepDisabled(3) && 'pointer-events-none select-none'
+            )}
           >
             <div className="flex items-center gap-2">
               <StepBadge step={3} currentStep={currentStep} />
@@ -291,7 +302,7 @@ function InstallPage(): React.JSX.Element {
               已选择 {selectedPreviewItems.length} 个
             </Chip>
           </Card.Header>
-          <Card.Content className={`gap-0 px-5 py-4 ${isStepDisabled(3) ? 'pointer-events-none select-none' : ''}`}>
+          <Card.Content className={cn('gap-0 px-5 py-4', isStepDisabled(3) && 'pointer-events-none select-none')}>
             {hasPreviewedSource && previews.length > 0 && (
               <CheckboxGroup
                 value={selectedPreviews}
@@ -309,13 +320,14 @@ function InstallPage(): React.JSX.Element {
                     <Checkbox
                       key={skill.skillPath}
                       value={skill.skillPath}
-                      className={`rounded-md border p-3 transition-colors ${
+                      className={cn(
+                        'rounded-md border p-3 transition-colors',
                         isBlocked
                           ? 'cursor-not-allowed border-border bg-surface-secondary opacity-70 hover:border-border hover:bg-surface-secondary'
                           : isSelected
                             ? 'border-accent/60 bg-accent-soft ring-1 ring-accent/20'
                             : 'border-border bg-surface'
-                      }`}
+                      )}
                       isDisabled={isBlocked}
                     >
                       <Checkbox.Control className="mt-0.5">
@@ -361,14 +373,17 @@ function InstallPage(): React.JSX.Element {
         </Card>
 
         <Card
-          className={`gap-0 overflow-hidden rounded-lg border bg-surface p-0 ${
-            currentStep === 4 ? 'border-accent/60' : currentStep > 4 ? 'border-accent/35' : 'border-border'
-          } ${isStepDisabled(4) ? 'cursor-not-allowed opacity-50' : ''}`}
+          className={cn(
+            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
+            currentStep === 4 ? 'border-accent/60' : currentStep > 4 ? 'border-accent/35' : 'border-border',
+            isStepDisabled(4) && 'cursor-not-allowed opacity-50'
+          )}
         >
           <Card.Header
-            className={`!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5 ${
-              isStepDisabled(4) ? 'pointer-events-none select-none' : ''
-            }`}
+            className={cn(
+              '!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5',
+              isStepDisabled(4) && 'pointer-events-none select-none'
+            )}
           >
             <div className="flex items-center gap-2">
               <StepBadge step={4} currentStep={currentStep} />
@@ -379,7 +394,7 @@ function InstallPage(): React.JSX.Element {
               已选择 {selectedAgents.length} 个
             </Chip>
           </Card.Header>
-          <Card.Content className={`gap-0 px-5 py-4 ${isStepDisabled(4) ? 'pointer-events-none select-none' : ''}`}>
+          <Card.Content className={cn('gap-0 px-5 py-4', isStepDisabled(4) && 'pointer-events-none select-none')}>
             {selectedPreviewItems.length === 0 && <p className="mb-3 text-xs text-muted">请先选择至少一个 Skill。</p>}
             <CheckboxGroup
               value={selectedAgents}
@@ -395,9 +410,10 @@ function InstallPage(): React.JSX.Element {
                   <Checkbox
                     key={agent.id}
                     value={agent.id}
-                    className={`rounded-md border p-3 transition-colors ${
+                    className={cn(
+                      'rounded-md border p-3 transition-colors',
                       isSelected ? 'border-accent bg-accent-soft ring-1 ring-accent/40' : 'border-border bg-surface'
-                    }`}
+                    )}
                   >
                     <Checkbox.Control>
                       {isSelected && (
@@ -425,12 +441,14 @@ function InstallPage(): React.JSX.Element {
         </Card>
 
         <Card
-          className={`gap-0 overflow-hidden rounded-lg border bg-surface p-0 ${currentStep === 5 ? 'border-accent/60' : 'border-border'} ${
-            isStepDisabled(5) ? 'cursor-not-allowed opacity-50' : ''
-          }`}
+          className={cn(
+            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
+            currentStep === 5 ? 'border-accent/60' : 'border-border',
+            isStepDisabled(5) && 'cursor-not-allowed opacity-50'
+          )}
         >
           <Card.Content
-            className={`!flex-row !items-center justify-between gap-3 px-5 py-4 ${isStepDisabled(5) ? 'pointer-events-none select-none' : ''}`}
+            className={cn('!flex-row !items-center justify-between gap-3 px-5 py-4', isStepDisabled(5) && 'pointer-events-none select-none')}
           >
             <div>
               <div className="flex items-center gap-2">
@@ -484,13 +502,14 @@ function StepBadge({ step, currentStep }: { step: number; currentStep: number })
 
   return (
     <span
-      className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-medium ${
+      className={cn(
+        'flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-medium',
         isActive
           ? 'border-accent bg-accent text-accent-foreground'
           : isDone
             ? 'border-accent bg-accent text-accent-foreground'
             : 'border-border bg-surface-secondary text-muted'
-      }`}
+      )}
     >
       {isDone ? <RiCheckLine size={14} /> : step}
     </span>
@@ -501,7 +520,7 @@ function SummaryRow({ label, value, isAccent = false }: { label: string; value: 
   return (
     <div className="rounded-lg border border-border bg-surface-secondary p-2.5">
       <div className="text-xs text-muted">{label}</div>
-      <div className={`mt-1 truncate text-sm font-medium ${isAccent ? 'text-accent-soft-foreground' : 'text-foreground'}`}>{value}</div>
+      <div className={cn('mt-1 truncate text-sm font-medium', isAccent ? 'text-accent-soft-foreground' : 'text-foreground')}>{value}</div>
     </div>
   )
 }

@@ -15,6 +15,7 @@ import {
   RiTerminalBoxLine
 } from '@remixicon/react'
 import type { AgentId, InstalledSkill, OperationResult } from '../../../shared/skills-types'
+import { cn } from '../lib/cn'
 import { skillsQueryKeys, skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/')({
@@ -211,11 +212,12 @@ function DashboardPage(): React.JSX.Element {
                                 <button
                                   type="button"
                                   aria-label={label}
-                                  className={`inline-flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  className={cn(
+                                    'inline-flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                                     isInstalled
                                       ? 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
                                       : 'border-border bg-surface text-muted hover:border-border-secondary hover:bg-surface-hover hover:text-foreground'
-                                  }`}
+                                  )}
                                   onClick={() => void (isInstalled ? removeAgent(skill, agent.id) : addAgent(skill, agent.id))}
                                   disabled={busy}
                                 >
