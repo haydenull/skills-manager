@@ -1,6 +1,7 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
 import { useTheme } from '@heroui/react'
 import { RiAddCircleLine, RiDashboardLine, RiSettings3Line } from '@remixicon/react'
+import appLogo from '../assets/app-logo.svg'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: RiDashboardLine },
@@ -19,9 +20,12 @@ function RootLayout(): React.JSX.Element {
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-6 py-6">
         <header className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface px-5 py-4 shadow-surface">
-          <div>
-            <h1 className="text-2xl font-semibold">Skills Manager</h1>
-            <p className="mt-1 text-sm text-muted">统一管理 Claude Code 与 Codex 的全局 Skill。</p>
+          <div className="flex items-center gap-3">
+            <img src={appLogo} alt="" className="size-12 rounded-xl" />
+            <div>
+              <h1 className="text-2xl font-semibold">Skills Manager</h1>
+              <p className="mt-1 text-sm text-muted">统一管理 Claude Code 与 Codex 的全局 Skill。</p>
+            </div>
           </div>
           <nav className="flex flex-wrap gap-2">
             {NAV_ITEMS.map((item) => {
