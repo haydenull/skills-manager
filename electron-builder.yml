@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: skills-manager
+productName: Skills Manager
 directories:
   buildResources: build
 files:
@@ -20,6 +20,7 @@ nsis:
   createDesktopShortcut: always
 mac:
   entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: false
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.

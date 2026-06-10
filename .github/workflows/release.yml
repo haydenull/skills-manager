@@ -62,7 +62,7 @@ jobs:
         run: pnpm run build
 
       - name: Build mac artifacts
-        run: pnpm exec electron-builder --mac --publish never
+        run: pnpm exec electron-builder --mac --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
