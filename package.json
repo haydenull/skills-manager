@@ -1,6 +1,6 @@
 {
   "name": "skills-manager",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Desktop skills manager for Claude Code and Codex",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.7.0",
