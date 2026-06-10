@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Spinner, useTheme } from '@heroui/react'
-import { RiFolderLine, RiMoonLine, RiSettings3Line, RiSunLine } from '@remixicon/react'
-import { useState } from 'react'
-import type { AgentId, SettingsFolderTarget } from '../../../shared/skills-types'
+import { RiDownloadLine, RiFolderLine, RiRefreshLine, RiRestartLine, RiMoonLine, RiSettings3Line, RiSunLine } from '@remixicon/react'
+import { useEffect, useState } from 'react'
+import type { AgentId, AppInfo, AppUpdateStatus, SettingsFolderTarget } from '../../../shared/skills-types'
 import { skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/settings')({
@@ -15,13 +15,46 @@ function SettingsPage(): React.JSX.Element {
   const settings = settingsQuery.data
   const { resolvedTheme, setTheme, theme } = useTheme('dark')
   const [openError, setOpenError] = useState('')
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
+  const [updateBusy, setUpdateBusy] = useState('')
   const currentTheme = resolvedTheme ?? theme
   const isDark = currentTheme === 'dark'
+
+  useEffect(() => {
+    window.api.app.getInfo().then(setAppInfo)
+  }, [])
 
   async function openFolder(target: SettingsFolderTarget, agentId?: AgentId): Promise<void> {
     setOpenError('')
     const result = await window.api.skills.openSettingsFolder(target, agentId)
     if (!result.ok) setOpenError(result.logs.join('\n'))
+  }
+
+  async function checkUpdates(): Promise<void> {
+    setUpdateBusy('check')
+    setUpdateStatus(await window.api.app.checkForUpdates())
+    setUpdateBusy('')
+  }
+
+  async function downloadUpdate(): Promise<void> {
+    setUpdateBusy('download')
+    setUpdateStatus(await window.api.app.downloadUpdate())
+    setUpdateBusy('')
+  }
+
+  async function installUpdate(): Promise<void> {
+    setUpdateBusy('install')
+    const result = await window.api.app.installUpdate()
+    if (!result.ok) {
+      setUpdateStatus({
+        status: 'error',
+        currentVersion: appInfo?.version ?? '',
+        update: updateStatus?.update,
+        message: result.logs.join('\n')
+      })
+      setUpdateBusy('')
+    }
   }
 
   if (!settings) {
@@ -53,6 +86,14 @@ function SettingsPage(): React.JSX.Element {
             </Button>
           </div>
         </div>
+        <UpdateRow
+          version={appInfo?.version}
+          status={updateStatus}
+          busy={updateBusy}
+          onCheck={() => void checkUpdates()}
+          onDownload={() => void downloadUpdate()}
+          onInstall={() => void installUpdate()}
+        />
         <PathRow label="应用数据目录" value={settings.appDataPath} onOpen={() => void openFolder('app-data')} />
         {settings.agents.map((agent) => (
           <PathRow
@@ -66,6 +107,80 @@ function SettingsPage(): React.JSX.Element {
       </div>
     </section>
   )
+}
+
+function UpdateRow({
+  version,
+  status,
+  busy,
+  onCheck,
+  onDownload,
+  onInstall
+}: {
+  version?: string
+  status: AppUpdateStatus | null
+  busy: string
+  onCheck: () => void
+  onDownload: () => void
+  onInstall: () => void
+}): React.JSX.Element {
+  const isBusy = busy !== ''
+  const hasUpdate = status?.status === 'available'
+  const isDownloaded = status?.status === 'downloaded'
+  const isError = status?.status === 'error'
+  const message = getUpdateMessage(status)
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-secondary p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium text-foreground">关于与更新</div>
+          <div className="mt-1 text-xs text-muted">当前版本 v{version ?? '-'}</div>
+          {status?.update && <div className="mt-1 text-xs text-muted">最新版本 v{status.update.version}</div>}
+          {message && <div className={`mt-2 text-xs ${isError ? 'text-danger-soft-foreground' : 'text-muted'}`}>{message}</div>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onPress={onCheck} isDisabled={isBusy} isPending={busy === 'check'}>
+            {({ isPending }) => (
+              <span className="inline-flex items-center gap-1.5">
+                {isPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
+                检查更新
+              </span>
+            )}
+          </Button>
+          {hasUpdate && (
+            <Button size="sm" variant="primary" onPress={onDownload} isDisabled={isBusy} isPending={busy === 'download'}>
+              {({ isPending }) => (
+                <span className="inline-flex items-center gap-1.5">
+                  {isPending ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={16} />}
+                  下载更新
+                </span>
+              )}
+            </Button>
+          )}
+          {isDownloaded && (
+            <Button size="sm" variant="primary" onPress={onInstall} isDisabled={isBusy} isPending={busy === 'install'}>
+              {({ isPending }) => (
+                <span className="inline-flex items-center gap-1.5">
+                  {isPending ? <Spinner color="current" size="sm" /> : <RiRestartLine size={16} />}
+                  重启安装
+                </span>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function getUpdateMessage(status: AppUpdateStatus | null): string {
+  if (!status) return ''
+  if (status.message) return status.message
+  if (status.status === 'checking') return '正在检查更新...'
+  if (status.status === 'available') return '发现新版本，可以下载更新'
+  if (status.status === 'downloading') return '正在下载更新...'
+  return ''
 }
 
 function PathRow({ label, value, onOpen }: { label: string; value: string; onOpen: () => void }): React.JSX.Element {

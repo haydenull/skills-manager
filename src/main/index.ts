@@ -2,8 +2,10 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { SkillsService } from './skills-service'
+import type { AppUpdateInfo, AppUpdateStatus, OperationResult } from '../shared/skills-types'
 
 if (process.env.SKILLS_MANAGER_LOCAL_DEBUG === '1') {
   const userDataPath = join(process.cwd(), '.debug', 'userData')
@@ -12,6 +14,141 @@ if (process.env.SKILLS_MANAGER_LOCAL_DEBUG === '1') {
 }
 
 const skillsService = new SkillsService()
+autoUpdater.autoDownload = false
+
+let appUpdateStatus: AppUpdateStatus = {
+  status: 'idle',
+  currentVersion: app.getVersion()
+}
+
+function toAppUpdateInfo(info: UpdateInfo): AppUpdateInfo {
+  return {
+    version: info.version,
+    releaseName: info.releaseName ?? undefined,
+    releaseDate: info.releaseDate
+  }
+}
+
+function setAppUpdateStatus(status: AppUpdateStatus): AppUpdateStatus {
+  appUpdateStatus = status
+  return appUpdateStatus
+}
+
+function createDevUpdateStatus(): AppUpdateStatus {
+  return {
+    status: 'error',
+    currentVersion: app.getVersion(),
+    message: '开发环境不支持检查更新'
+  }
+}
+
+autoUpdater.on('checking-for-update', () => {
+  setAppUpdateStatus({
+    status: 'checking',
+    currentVersion: app.getVersion()
+  })
+})
+
+autoUpdater.on('update-available', (info) => {
+  setAppUpdateStatus({
+    status: 'available',
+    currentVersion: app.getVersion(),
+    update: toAppUpdateInfo(info)
+  })
+})
+
+autoUpdater.on('update-not-available', () => {
+  setAppUpdateStatus({
+    status: 'not-available',
+    currentVersion: app.getVersion(),
+    message: '当前已是最新版本'
+  })
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  setAppUpdateStatus({
+    status: 'downloaded',
+    currentVersion: app.getVersion(),
+    update: toAppUpdateInfo(info),
+    message: '更新已下载，重启后安装'
+  })
+})
+
+autoUpdater.on('error', (error) => {
+  setAppUpdateStatus({
+    status: 'error',
+    currentVersion: app.getVersion(),
+    update: appUpdateStatus.update,
+    message: error.message
+  })
+})
+
+async function checkForAppUpdates(): Promise<AppUpdateStatus> {
+  if (is.dev) return createDevUpdateStatus()
+
+  setAppUpdateStatus({
+    status: 'checking',
+    currentVersion: app.getVersion()
+  })
+
+  try {
+    await autoUpdater.checkForUpdates()
+    return appUpdateStatus
+  } catch (error) {
+    return setAppUpdateStatus({
+      status: 'error',
+      currentVersion: app.getVersion(),
+      message: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
+async function downloadAppUpdate(): Promise<AppUpdateStatus> {
+  if (is.dev) return createDevUpdateStatus()
+  if (appUpdateStatus.status !== 'available') {
+    return setAppUpdateStatus({
+      status: 'error',
+      currentVersion: app.getVersion(),
+      update: appUpdateStatus.update,
+      message: '没有可下载的更新'
+    })
+  }
+
+  setAppUpdateStatus({
+    status: 'downloading',
+    currentVersion: app.getVersion(),
+    update: appUpdateStatus.update
+  })
+
+  try {
+    await autoUpdater.downloadUpdate()
+    return setAppUpdateStatus({
+      status: 'downloaded',
+      currentVersion: app.getVersion(),
+      update: appUpdateStatus.update,
+      message: '更新已下载，重启后安装'
+    })
+  } catch (error) {
+    return setAppUpdateStatus({
+      status: 'error',
+      currentVersion: app.getVersion(),
+      update: appUpdateStatus.update,
+      message: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
+function installAppUpdate(): OperationResult {
+  if (is.dev) return { ok: false, logs: ['开发环境不支持安装更新'] }
+  if (appUpdateStatus.status !== 'downloaded') return { ok: false, logs: ['没有已下载的更新'] }
+
+  try {
+    autoUpdater.quitAndInstall()
+    return { ok: true, logs: ['正在重启安装更新'] }
+  } catch (error) {
+    return { ok: false, logs: [error instanceof Error ? error.message : String(error)] }
+  }
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -71,6 +208,10 @@ app.whenReady().then(() => {
   ipcMain.handle('skills:stop-debug', (_event, name: string) => skillsService.stopDebug(name))
   ipcMain.handle('skills:open-storage-folder', (_event, name: string) => skillsService.openStorageFolder(name))
   ipcMain.handle('skills:open-settings-folder', (_event, target, agentId) => skillsService.openSettingsFolder(target, agentId))
+  ipcMain.handle('app:get-info', () => ({ version: app.getVersion() }))
+  ipcMain.handle('app:check-for-updates', () => checkForAppUpdates())
+  ipcMain.handle('app:download-update', () => downloadAppUpdate())
+  ipcMain.handle('app:install-update', () => installAppUpdate())
 
   createWindow()
 

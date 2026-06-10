@@ -2,6 +2,8 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AgentId,
   AgentUpdateRequest,
+  AppInfo,
+  AppUpdateStatus,
   InstallRequest,
   InstalledSkill,
   OperationResult,
@@ -11,6 +13,13 @@ import type {
   SkillPreview,
   SkillUpdateStatus
 } from '../shared/skills-types'
+
+type AppApi = {
+  getInfo: () => Promise<AppInfo>
+  checkForUpdates: () => Promise<AppUpdateStatus>
+  downloadUpdate: () => Promise<AppUpdateStatus>
+  installUpdate: () => Promise<OperationResult>
+}
 
 type SkillsApi = {
   listGlobal: () => Promise<InstalledSkill[]>
@@ -31,6 +40,7 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: {
+      app: AppApi
       skills: SkillsApi
     }
   }

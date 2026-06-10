@@ -1,6 +1,23 @@
 export type AgentId = 'claude-code' | 'codex'
 export type SettingsFolderTarget = 'app-data' | 'agent-skills'
 
+export type AppInfo = {
+  version: string
+}
+
+export type AppUpdateInfo = {
+  version: string
+  releaseName?: string
+  releaseDate?: string
+}
+
+export type AppUpdateStatus = {
+  status: 'idle' | 'checking' | 'not-available' | 'available' | 'downloading' | 'downloaded' | 'error'
+  currentVersion: string
+  update?: AppUpdateInfo
+  message?: string
+}
+
 export type InstalledSkill = {
   name: string
   description: string

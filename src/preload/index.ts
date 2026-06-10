@@ -4,6 +4,12 @@ import type { AgentId, AgentUpdateRequest, InstallRequest, RemoveRequest, Settin
 
 // Custom APIs for renderer
 const api = {
+  app: {
+    getInfo: () => ipcRenderer.invoke('app:get-info'),
+    checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+    downloadUpdate: () => ipcRenderer.invoke('app:download-update'),
+    installUpdate: () => ipcRenderer.invoke('app:install-update')
+  },
   skills: {
     listGlobal: () => ipcRenderer.invoke('skills:list-global'),
     getSettingsInfo: () => ipcRenderer.invoke('skills:get-settings-info'),
