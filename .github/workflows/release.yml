@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example 1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Validate version
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use x.y.z format, for example 1.0.0"
+            exit 1
+          fi
+
+      - name: Check release target
+        run: |
+          tag="v${{ inputs.version }}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag"; then
+            echo "$tag already exists"
+            exit 1
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag release already exists"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update package version
+        run: pnpm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build renderer and main
+        run: pnpm run build
+
+      - name: Build mac artifacts
+        run: pnpm exec electron-builder --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Publish release
+        run: |
+          set -euo pipefail
+
+          tag="v${{ inputs.version }}"
+          assets=()
+          while IFS= read -r -d '' file; do
+            assets+=("$file")
+          done < <(find dist -maxdepth 1 -type f -print0)
+
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No release assets found"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore(release): 🔧 发布 $tag"
+          git tag "$tag"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "$tag"
+
+          gh release create "$tag" "${assets[@]}" --title "$tag" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
