@@ -1,7 +1,7 @@
 import './assets/main.css'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react-router'
 import { ToastProvider } from '@heroui/react/toast'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -19,7 +19,8 @@ const queryClient = new QueryClient({
   }
 })
 
-const router = createRouter({ routeTree })
+const hashHistory = createHashHistory()
+const router = createRouter({ routeTree, history: hashHistory })
 
 declare module '@tanstack/react-router' {
   interface Register {
