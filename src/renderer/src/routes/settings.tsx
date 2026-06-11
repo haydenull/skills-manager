@@ -63,11 +63,12 @@ function SettingsPage(): React.JSX.Element {
     setUpdateBusy('install')
     const result = await window.api.app.installUpdate()
     if (!result.ok) {
+      const message = result.logs.join('\n')
       setUpdateStatus({
-        status: 'error',
+        status: message === '没有已下载的更新' && updateStatus?.update ? 'available' : 'error',
         currentVersion: appInfo?.version ?? '',
         update: updateStatus?.update,
-        message: result.logs.join('\n')
+        message
       })
       setUpdateBusy('')
     }

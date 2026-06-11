@@ -1,5 +1,5 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { mkdirSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
@@ -21,12 +21,23 @@ let appUpdateStatus: AppUpdateStatus = {
   currentVersion: app.getVersion()
 }
 
+type AutoUpdaterWithDownloadedUpdate = typeof autoUpdater & {
+  downloadedUpdateHelper?: {
+    file: string | null
+  } | null
+}
+
 function toAppUpdateInfo(info: UpdateInfo): AppUpdateInfo {
   return {
     version: info.version,
     releaseName: info.releaseName ?? undefined,
     releaseDate: info.releaseDate
   }
+}
+
+function getDownloadedUpdateFile(): string | null {
+  const file = (autoUpdater as AutoUpdaterWithDownloadedUpdate).downloadedUpdateHelper?.file
+  return file && existsSync(file) ? file : null
 }
 
 function setAppUpdateStatus(status: AppUpdateStatus): AppUpdateStatus {
@@ -140,7 +151,7 @@ async function downloadAppUpdate(): Promise<AppUpdateStatus> {
 
 function installAppUpdate(): OperationResult {
   if (is.dev) return { ok: false, logs: ['开发环境不支持安装更新'] }
-  if (appUpdateStatus.status !== 'downloaded') return { ok: false, logs: ['没有已下载的更新'] }
+  if (appUpdateStatus.status !== 'downloaded' && getDownloadedUpdateFile() === null) return { ok: false, logs: ['没有已下载的更新'] }
 
   try {
     autoUpdater.quitAndInstall()
