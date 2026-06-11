@@ -52,3 +52,5 @@ skills-manager 是面向 Claude Code 与 Codex 用户的桌面端 skills 管理�
 ## 5. 文档索引
 
 - `docs/file-tree.md` - 项目目录结构、关键文件职责和生成目录说明。
+- `docs/installation.md` - macOS 安装包下载、安装和解除隔离标记说明。
+- `docs/development.md` - 开发环境准备、常用命令和本地开发隔离说明。

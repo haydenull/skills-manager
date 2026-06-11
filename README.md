@@ -10,21 +10,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 ## 安装
 
-当前仅支持 macOS。
-
-1. 打开 [Releases](https://github.com/haydenull/skills-manager/releases) 页面。
-2. 下载适合当前 Mac 芯片的 `.dmg` 安装包：
-   - Apple Silicon：选择文件名包含 `arm64` 的安装包。
-   - Intel Mac：选择文件名包含 `x64` 的安装包。
-3. 双击打开 `.dmg` 文件。
-4. 将 `Skills Manager` 拖到“应用程序”目录。
-5. 打开终端，执行以下命令解除 macOS 隔离标记：
-
-```bash
-xattr -d com.apple.quarantine /Applications/Skills\ Manager.app
-```
-
-6. 从“应用程序”中打开 `Skills Manager`。
+安装应用见 [安装说明](docs/installation.md)。
 
 ## 使用说明
 
@@ -90,34 +76,4 @@ xattr -d com.apple.quarantine /Applications/Skills\ Manager.app
 
 ## 开发
 
-### 准备环境
-
-请先安装 Node.js，并启用 pnpm。本项目使用的包管理器版本为：
-
-```bash
-pnpm@10.7.0
-```
-
-如果本机还没有 pnpm，可以通过 Corepack 启用：
-
-```bash
-corepack enable
-```
-
-安装依赖：
-
-```bash
-pnpm install
-```
-
-### 常用命令
-
-```bash
-pnpm dev          # 启动开发环境
-pnpm lint         # 运行 ESLint
-pnpm typecheck    # 运行 TypeScript 类型检查
-pnpm build        # 构建应用
-pnpm build:mac    # 打包 macOS 应用
-```
-
-开发模式会使用仓库内的 `.debug/` 目录作为本地开发隔离环境，不会直接改动真实的 Claude Code 或 Codex skills 目录。
+开发环境和常用命令见 [开发说明](docs/development.md)。

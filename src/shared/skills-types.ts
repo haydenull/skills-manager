@@ -63,6 +63,7 @@ export type RemoveRequest = {
 
 export type SettingsInfo = {
   appDataPath: string
+  gitlabTokenHosts: string[]
   agents: Array<{
     id: AgentId
     label: string

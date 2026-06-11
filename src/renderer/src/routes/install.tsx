@@ -219,7 +219,7 @@ function InstallPage(): React.JSX.Element {
           <Card.Content className="gap-0 px-5 py-4">
             <Input
               aria-label="Source"
-              placeholder="vercel-labs/agent-skills、git@gitlab.example.com:group/repo.git 或 ~/skills"
+              placeholder="vercel-labs/agent-skills、https://gitlab.example.com/group/repo/-/tree/main/src 或 ~/skills"
               value={source}
               onChange={(event) => updateSource(event.target.value)}
               disabled={busy}

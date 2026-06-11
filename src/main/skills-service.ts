@@ -25,6 +25,8 @@ type SourceInfo = {
   provider: SourceProvider
   repositoryUrl?: string
   localPath?: string
+  host?: string
+  projectPath?: string
   owner?: string
   repo?: string
   ref?: string
@@ -47,6 +49,10 @@ type GitHubTree = {
   tree: TreeEntry[]
 }
 
+type AppSettings = {
+  gitlabTokens: Record<string, string>
+}
+
 type RepositorySnapshot =
   | {
       source: SourceInfo
@@ -63,9 +69,12 @@ type LockEntry = {
   provider?: SourceProvider
   repositoryUrl?: string
   localPath?: string
+  host?: string
+  projectPath?: string
   owner?: string
   repo?: string
   ref?: string
+  subpath?: string
   skillPath: string
   folderSha: string | null
   agents: AgentId[]
@@ -144,15 +153,38 @@ export class SkillsService {
     return skills.sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  getSettingsInfo(): SettingsInfo {
+  async getSettingsInfo(): Promise<SettingsInfo> {
+    const settings = await this.readSettings()
+
     return {
       appDataPath: this.getUserDataPath(),
+      gitlabTokenHosts: Object.keys(settings.gitlabTokens).sort((a, b) => a.localeCompare(b)),
       agents: (Object.entries(AGENTS) as Array<[AgentId, (typeof AGENTS)[AgentId]]>).map(([id, agent]) => ({
         id,
         label: agent.displayName,
         skillsPath: agent.dir()
       }))
     }
+  }
+
+  async saveGitLabToken(host: string, token: string): Promise<OperationResult> {
+    const normalizedHost = normalizeGitLabHost(host)
+    const trimmedToken = token.trim()
+    if (!normalizedHost) return { ok: false, logs: ['GitLab host 不能为空。'] }
+    if (!trimmedToken) return { ok: false, logs: ['GitLab token 不能为空。'] }
+
+    const settings = await this.readSettings()
+    settings.gitlabTokens[normalizedHost] = trimmedToken
+    await this.writeSettings(settings)
+    return { ok: true, logs: [`已保存 ${normalizedHost} 的 GitLab token。`] }
+  }
+
+  async deleteGitLabToken(host: string): Promise<OperationResult> {
+    const normalizedHost = normalizeGitLabHost(host)
+    const settings = await this.readSettings()
+    delete settings.gitlabTokens[normalizedHost]
+    await this.writeSettings(settings)
+    return { ok: true, logs: [`已删除 ${normalizedHost} 的 GitLab token。`] }
   }
 
   async previewSource(source: string, fullDepth = false): Promise<SkillPreview[]> {
@@ -209,9 +241,12 @@ export class SkillsService {
             provider: snapshot.source.provider,
             repositoryUrl: snapshot.source.repositoryUrl,
             localPath: snapshot.source.localPath,
+            host: snapshot.source.host,
+            projectPath: snapshot.source.projectPath,
             owner: snapshot.source.owner,
             repo: snapshot.source.repo,
-            ref: snapshot.source.provider === 'github' ? snapshot.source.ref : undefined,
+            ref: snapshot.source.provider === 'local' ? undefined : snapshot.source.ref,
+            subpath: snapshot.source.subpath,
             skillPath: skill.skillPath,
             folderSha: skill.folderSha,
             agents: request.agents,
@@ -291,7 +326,7 @@ export class SkillsService {
           }
         }
 
-        if (snapshot.source.provider === 'github') entry.ref = snapshot.source.ref!
+        if (snapshot.source.provider !== 'local') entry.ref = snapshot.source.ref!
         entry.folderSha = preview.folderSha
         entry.installedAt = new Date().toISOString()
         updated += 1
@@ -429,6 +464,10 @@ export class SkillsService {
     return join(this.getUserDataPath(), 'skills-lock.json')
   }
 
+  private getSettingsPath(): string {
+    return join(this.getUserDataPath(), 'settings.json')
+  }
+
   private getSkillStoragePath(skillName: string): string {
     return join(this.getUserDataPath(), 'skills', skillName)
   }
@@ -449,6 +488,27 @@ export class SkillsService {
     await writeFile(this.getLockPath(), JSON.stringify(lock, null, 2) + '\n', 'utf-8')
   }
 
+  private async readSettings(): Promise<AppSettings> {
+    try {
+      const content = await readFile(this.getSettingsPath(), 'utf-8')
+      const parsed = JSON.parse(content) as Partial<AppSettings>
+      const gitlabTokens: Record<string, string> = {}
+      if (parsed.gitlabTokens && typeof parsed.gitlabTokens === 'object' && !Array.isArray(parsed.gitlabTokens)) {
+        for (const [host, token] of Object.entries(parsed.gitlabTokens)) {
+          if (typeof token === 'string') gitlabTokens[normalizeGitLabHost(host)] = token
+        }
+      }
+      return { gitlabTokens }
+    } catch {
+      return createEmptySettings()
+    }
+  }
+
+  private async writeSettings(settings: AppSettings): Promise<void> {
+    await mkdir(dirname(this.getSettingsPath()), { recursive: true })
+    await writeFile(this.getSettingsPath(), JSON.stringify(settings, null, 2) + '\n', 'utf-8')
+  }
+
   private markInstallState(skills: SkillPreview[], source: SourceInfo, lock: LockFile): SkillPreview[] {
     return skills.map((skill) => ({
       ...skill,
@@ -460,7 +520,17 @@ export class SkillsService {
     const entry = lock.skills[sanitizeName(skill.name)]
     if (!entry) return {}
 
-    if (isSameSource(source, getLockEntrySource(entry))) {
+    let installedSource: SourceInfo
+    try {
+      installedSource = getLockEntrySource(entry)
+    } catch (error) {
+      return {
+        installState: 'conflict',
+        installMessage: `${skill.name} 与已安装 Skill 同名，但已安装记录无效：${getErrorMessage(error)}`
+      }
+    }
+
+    if (isSameSource(source, installedSource)) {
       return {
         installState: 'installed',
         installMessage: `${skill.name} 已安装。`
@@ -533,6 +603,11 @@ export class SkillsService {
       if (tree) return { source, tree }
     }
 
+    if (source.provider === 'gitlab') {
+      const tree = await this.fetchGitLabTree(source)
+      return { source, tree }
+    }
+
     const rootPath = await cloneRepository(source)
     if (source.provider === 'github' && !source.ref) source.ref = 'HEAD'
     return { source, rootPath }
@@ -552,6 +627,58 @@ export class SkillsService {
       return (await response.json()) as GitHubTree
     } catch {
       return null
+    }
+  }
+
+  private async fetchGitLabTree(source: SourceInfo): Promise<GitHubTree> {
+    if (!source.ref) source.ref = await this.fetchGitLabDefaultRef(source)
+
+    const tree: TreeEntry[] = []
+    let page = 1
+
+    while (true) {
+      const url = new URL(`https://${source.host}/api/v4/projects/${encodeURIComponent(source.projectPath!)}/repository/tree`)
+      url.searchParams.set('recursive', 'true')
+      url.searchParams.set('per_page', '100')
+      url.searchParams.set('page', String(page))
+      url.searchParams.set('ref', source.ref)
+
+      const response = await fetch(url, {
+        headers: await this.getGitLabHeaders(source.host!),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+      })
+      if (!response.ok) throw new Error(`Failed to fetch GitLab repository tree from ${source.host}: ${response.status}`)
+
+      const entries = (await response.json()) as Array<{ id: string; path: string; type: 'blob' | 'tree' }>
+      tree.push(...entries.map((entry) => ({ path: entry.path, type: entry.type, sha: entry.id })))
+
+      const nextPage = response.headers.get('x-next-page')
+      if (!nextPage) break
+      page = Number(nextPage)
+    }
+
+    return { sha: await hashTreeEntries(tree), tree }
+  }
+
+  private async fetchGitLabDefaultRef(source: SourceInfo): Promise<string> {
+    const response = await fetch(`https://${source.host}/api/v4/projects/${encodeURIComponent(source.projectPath!)}`, {
+      headers: await this.getGitLabHeaders(source.host!),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    })
+    if (!response.ok) throw new Error(`Failed to fetch GitLab project from ${source.host}: ${response.status}`)
+
+    const project = (await response.json()) as { default_branch?: string }
+    return project.default_branch || 'HEAD'
+  }
+
+  private async getGitLabHeaders(host: string): Promise<Record<string, string>> {
+    const settings = await this.readSettings()
+    const token = settings.gitlabTokens[host]
+    if (!token) throw new Error(`请先在设置中配置 ${host} 的 GitLab token。`)
+
+    return {
+      'PRIVATE-TOKEN': token,
+      'User-Agent': 'skills-manager'
     }
   }
 
@@ -656,6 +783,20 @@ export class SkillsService {
   }
 
   private async fetchRawFile(source: SourceInfo, path: string): Promise<Buffer> {
+    if (source.provider === 'gitlab') {
+      const url = new URL(
+        `https://${source.host}/api/v4/projects/${encodeURIComponent(source.projectPath!)}/repository/files/${encodeURIComponent(path)}/raw`
+      )
+      url.searchParams.set('ref', source.ref!)
+
+      const response = await fetch(url, {
+        headers: await this.getGitLabHeaders(source.host!),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+      })
+      if (!response.ok) throw new Error(`Failed to download ${path}: ${response.status}`)
+      return Buffer.from(await response.arrayBuffer())
+    }
+
     const response = await fetch(
       `https://raw.githubusercontent.com/${source.owner!}/${source.repo!}/${encodeURIComponent(source.ref!)}/${path
         .split('/')
@@ -695,6 +836,10 @@ export class SkillsService {
 
 function createEmptyLock(): LockFile {
   return { version: 1, skills: {} }
+}
+
+function createEmptySettings(): AppSettings {
+  return { gitlabTokens: {} }
 }
 
 function findSkillMdPaths(tree: TreeEntry[], subpath?: string, fullDepth = false): SkillMdPath[] {
@@ -792,6 +937,38 @@ function sanitizeName(name: string): string {
   return safe
 }
 
+function normalizeSubpath(path?: string): string {
+  return path?.replace(/^\/|\/$/g, '') || ''
+}
+
+function normalizeGitLabHost(host: string): string {
+  const trimmed = host.trim()
+  if (!trimmed) return ''
+
+  try {
+    const url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`)
+    return url.host.toLowerCase()
+  } catch {
+    return trimmed
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+      .toLowerCase()
+  }
+}
+
+async function hashTreeEntries(tree: TreeEntry[]): Promise<string> {
+  const hash = createHash('sha256')
+  for (const entry of [...tree].sort((a, b) => a.path.localeCompare(b.path))) {
+    hash.update(entry.type)
+    hash.update('\0')
+    hash.update(entry.path)
+    hash.update('\0')
+    hash.update(entry.sha)
+    hash.update('\0')
+  }
+  return `sha256:${hash.digest('hex')}`
+}
+
 function resolveLocalPath(input: string): string | null {
   if (input === '~') return homedir()
   if (/^~[\\/]/.test(input)) return resolve(homedir(), input.slice(2))
@@ -800,7 +977,8 @@ function resolveLocalPath(input: string): string | null {
 
 function formatSource(source: SourceInfo): string {
   if (source.provider === 'github') return `${source.owner}/${source.repo}`
-  return source.provider === 'local' ? source.localPath! : source.repositoryUrl!
+  if (source.provider === 'gitlab') return source.repositoryUrl!
+  return source.localPath!
 }
 
 function isSameSource(a: SourceInfo, b: SourceInfo): boolean {
@@ -814,24 +992,42 @@ function isSameSource(a: SourceInfo, b: SourceInfo): boolean {
     return resolve(a.localPath!) === resolve(b.localPath!)
   }
 
-  return a.repositoryUrl === b.repositoryUrl
+  return (
+    a.host?.toLowerCase() === b.host?.toLowerCase() &&
+    a.projectPath?.toLowerCase() === b.projectPath?.toLowerCase() &&
+    a.ref === b.ref &&
+    normalizeSubpath(a.subpath) === normalizeSubpath(b.subpath)
+  )
 }
 
 function resolveGitLabSource(input: string): SourceInfo {
-  const match = input.match(/^git@([^:]+):(.+?)\/?$/)
-  if (!match || match[1] === 'github.com') {
-    throw new Error('Use owner/repo for GitHub or an SSH clone URL for GitLab, such as git@gitlab.example.com:group/repo.git.')
+  let url: URL
+  try {
+    url = new URL(input)
+  } catch {
+    throw new Error('Use owner/repo for GitHub or an HTTPS GitLab URL, such as https://gitlab.example.com/group/repo.')
   }
 
-  const host = match[1]
-  const repositoryPath = match[2].replace(/\.git$/, '')
-
-  if (repositoryPath.split('/').length < 2) {
-    throw new Error('GitLab SSH URL must include a group and repository name.')
+  if (url.protocol !== 'https:' || url.hostname === 'github.com') {
+    throw new Error('Use owner/repo for GitHub or an HTTPS GitLab URL, such as https://gitlab.example.com/group/repo.')
   }
 
-  const repositoryUrl = `git@${host}:${repositoryPath}.git`
-  return { provider: 'gitlab', repositoryUrl }
+  const parts = url.pathname
+    .replace(/^\/|\/$/g, '')
+    .split('/')
+    .filter(Boolean)
+    .map(decodeURIComponent)
+  const treeIndex = parts.indexOf('-')
+  const repositoryParts = treeIndex >= 0 ? parts.slice(0, treeIndex) : parts
+  const treeParts = treeIndex >= 0 && parts[treeIndex + 1] === 'tree' ? parts.slice(treeIndex + 2) : []
+  const projectPath = repositoryParts.join('/').replace(/\.git$/, '')
+
+  if (projectPath.split('/').length < 2) throw new Error('GitLab URL must include a group and repository name.')
+
+  const ref = treeParts[0]
+  const subpath = treeParts.slice(1).join('/') || undefined
+  const repositoryUrl = `https://${url.host}/${projectPath}`
+  return { provider: 'gitlab', repositoryUrl, host: url.host, projectPath, ref, subpath }
 }
 
 function getLockEntrySource(entry: LockEntry): SourceInfo {
@@ -841,11 +1037,15 @@ function getLockEntrySource(entry: LockEntry): SourceInfo {
   }
 
   if (entry.provider === 'gitlab') {
-    if (!entry.repositoryUrl) throw new Error(`Invalid GitLab source for ${entry.name}.`)
-    if (!entry.repositoryUrl.startsWith('git@')) {
-      throw new Error(`GitLab source for ${entry.name} uses HTTPS. Reinstall it with an SSH clone URL.`)
+    if (!entry.host || !entry.projectPath) throw new Error(`Invalid GitLab source for ${entry.name}.`)
+    return {
+      provider: 'gitlab',
+      repositoryUrl: entry.repositoryUrl || `https://${entry.host}/${entry.projectPath}`,
+      host: entry.host,
+      projectPath: entry.projectPath,
+      ref: entry.ref,
+      subpath: entry.subpath
     }
-    return { provider: 'gitlab', repositoryUrl: entry.repositoryUrl }
   }
 
   if (!entry.owner || !entry.repo) throw new Error(`Invalid GitHub source for ${entry.name}.`)

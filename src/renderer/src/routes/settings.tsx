@@ -1,7 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Spinner, useTheme } from '@heroui/react'
-import { RiDownloadLine, RiFolderLine, RiRefreshLine, RiRestartLine, RiMoonLine, RiSettings3Line, RiSunLine } from '@remixicon/react'
+import { Button, Input, Spinner, useTheme } from '@heroui/react'
+import {
+  RiDeleteBinLine,
+  RiDownloadLine,
+  RiFolderLine,
+  RiRefreshLine,
+  RiRestartLine,
+  RiMoonLine,
+  RiSaveLine,
+  RiSettings3Line,
+  RiSunLine
+} from '@remixicon/react'
 import { useEffect, useState } from 'react'
 import type { AgentId, AppInfo, AppUpdateStatus, SettingsFolderTarget } from '../../../shared/skills-types'
 import { skillsQueryOptions } from '../skills-queries'
@@ -18,6 +28,10 @@ function SettingsPage(): React.JSX.Element {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState('')
+  const [gitlabHost, setGitlabHost] = useState('')
+  const [gitlabToken, setGitlabToken] = useState('')
+  const [gitlabBusy, setGitlabBusy] = useState('')
+  const [gitlabMessage, setGitlabMessage] = useState('')
   const currentTheme = resolvedTheme ?? theme
   const isDark = currentTheme === 'dark'
 
@@ -57,6 +71,28 @@ function SettingsPage(): React.JSX.Element {
     }
   }
 
+  async function saveGitLabToken(): Promise<void> {
+    setGitlabBusy('save')
+    setGitlabMessage('')
+    const result = await window.api.skills.saveGitLabToken(gitlabHost, gitlabToken)
+    setGitlabMessage(result.logs.join('\n'))
+    if (result.ok) {
+      setGitlabHost('')
+      setGitlabToken('')
+      await settingsQuery.refetch()
+    }
+    setGitlabBusy('')
+  }
+
+  async function deleteGitLabToken(host: string): Promise<void> {
+    setGitlabBusy(host)
+    setGitlabMessage('')
+    const result = await window.api.skills.deleteGitLabToken(host)
+    setGitlabMessage(result.logs.join('\n'))
+    if (result.ok) await settingsQuery.refetch()
+    setGitlabBusy('')
+  }
+
   if (!settings) {
     return (
       <section className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface p-8 text-muted">
@@ -94,6 +130,17 @@ function SettingsPage(): React.JSX.Element {
           onDownload={() => void downloadUpdate()}
           onInstall={() => void installUpdate()}
         />
+        <GitLabTokenRow
+          hosts={settings.gitlabTokenHosts}
+          host={gitlabHost}
+          token={gitlabToken}
+          busy={gitlabBusy}
+          message={gitlabMessage}
+          onHostChange={setGitlabHost}
+          onTokenChange={setGitlabToken}
+          onSave={() => void saveGitLabToken()}
+          onDelete={(host) => void deleteGitLabToken(host)}
+        />
         <PathRow label="应用数据目录" value={settings.appDataPath} onOpen={() => void openFolder('app-data')} />
         {settings.agents.map((agent) => (
           <PathRow
@@ -106,6 +153,84 @@ function SettingsPage(): React.JSX.Element {
         {openError && <div className="rounded-lg border border-danger-soft bg-danger-soft p-3 text-xs text-danger-soft-foreground">{openError}</div>}
       </div>
     </section>
+  )
+}
+
+function GitLabTokenRow({
+  hosts,
+  host,
+  token,
+  busy,
+  message,
+  onHostChange,
+  onTokenChange,
+  onSave,
+  onDelete
+}: {
+  hosts: string[]
+  host: string
+  token: string
+  busy: string
+  message: string
+  onHostChange: (value: string) => void
+  onTokenChange: (value: string) => void
+  onSave: () => void
+  onDelete: (host: string) => void
+}): React.JSX.Element {
+  const isSaving = busy === 'save'
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-secondary p-4">
+      <div className="text-sm font-medium text-foreground">GitLab Token</div>
+      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <Input aria-label="GitLab Host" placeholder="gitlab.corp.youdao.com" value={host} onChange={(event) => onHostChange(event.target.value)} />
+        <Input
+          aria-label="GitLab Token"
+          type="password"
+          placeholder="Personal access token"
+          value={token}
+          onChange={(event) => onTokenChange(event.target.value)}
+        />
+        <Button size="sm" variant="primary" className="self-end" onPress={onSave} isPending={isSaving} isDisabled={busy !== ''}>
+          {({ isPending }) => (
+            <span className="inline-flex items-center gap-1.5">
+              {isPending ? <Spinner color="current" size="sm" /> : <RiSaveLine size={16} />}
+              保存
+            </span>
+          )}
+        </Button>
+      </div>
+      {hosts.length > 0 && (
+        <div className="mt-3 grid gap-2">
+          {hosts.map((configuredHost) => (
+            <div
+              key={configuredHost}
+              className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2"
+            >
+              <div>
+                <div className="break-all text-xs font-medium text-foreground">{configuredHost}</div>
+                <div className="mt-0.5 text-xs text-muted">已配置</div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => onDelete(configuredHost)}
+                isPending={busy === configuredHost}
+                isDisabled={busy !== ''}
+              >
+                {({ isPending }) => (
+                  <span className="inline-flex items-center gap-1.5">
+                    {isPending ? <Spinner color="current" size="sm" /> : <RiDeleteBinLine size={16} />}
+                    删除
+                  </span>
+                )}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {message && <div className="mt-3 rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted">{message}</div>}
+    </div>
   )
 }
 
