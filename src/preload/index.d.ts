@@ -19,6 +19,7 @@ type AppApi = {
   checkForUpdates: () => Promise<AppUpdateStatus>
   downloadUpdate: () => Promise<AppUpdateStatus>
   installUpdate: () => Promise<OperationResult>
+  onUpdateStatus: (callback: (status: AppUpdateStatus) => void) => () => void
 }
 
 type SkillsApi = {

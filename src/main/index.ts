@@ -42,6 +42,9 @@ function getDownloadedUpdateFile(): string | null {
 
 function setAppUpdateStatus(status: AppUpdateStatus): AppUpdateStatus {
   appUpdateStatus = status
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('app:update-status', appUpdateStatus)
+  })
   return appUpdateStatus
 }
 
@@ -81,7 +84,27 @@ autoUpdater.on('update-downloaded', (info) => {
     status: 'downloaded',
     currentVersion: app.getVersion(),
     update: toAppUpdateInfo(info),
+    downloadProgress: {
+      percent: 100,
+      transferred: 1,
+      total: 1,
+      bytesPerSecond: 0
+    },
     message: '更新已下载，重启后安装'
+  })
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  setAppUpdateStatus({
+    status: 'downloading',
+    currentVersion: app.getVersion(),
+    update: appUpdateStatus.update,
+    downloadProgress: {
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond
+    }
   })
 })
 
@@ -128,7 +151,13 @@ async function downloadAppUpdate(): Promise<AppUpdateStatus> {
   setAppUpdateStatus({
     status: 'downloading',
     currentVersion: app.getVersion(),
-    update: appUpdateStatus.update
+    update: appUpdateStatus.update,
+    downloadProgress: {
+      percent: 0,
+      transferred: 0,
+      total: 0,
+      bytesPerSecond: 0
+    }
   })
 
   try {
@@ -137,6 +166,12 @@ async function downloadAppUpdate(): Promise<AppUpdateStatus> {
       status: 'downloaded',
       currentVersion: app.getVersion(),
       update: appUpdateStatus.update,
+      downloadProgress: {
+        percent: 100,
+        transferred: 1,
+        total: 1,
+        bytesPerSecond: 0
+      },
       message: '更新已下载，重启后安装'
     })
   } catch (error) {

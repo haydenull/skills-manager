@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { AgentId, AgentUpdateRequest, InstallRequest, RemoveRequest, SettingsFolderTarget } from '../shared/skills-types'
+import type { AgentId, AgentUpdateRequest, AppUpdateStatus, InstallRequest, RemoveRequest, SettingsFolderTarget } from '../shared/skills-types'
 
 // Custom APIs for renderer
 const api = {
@@ -8,7 +8,12 @@ const api = {
     getInfo: () => ipcRenderer.invoke('app:get-info'),
     checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
     downloadUpdate: () => ipcRenderer.invoke('app:download-update'),
-    installUpdate: () => ipcRenderer.invoke('app:install-update')
+    installUpdate: () => ipcRenderer.invoke('app:install-update'),
+    onUpdateStatus: (callback: (status: AppUpdateStatus) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus): void => callback(status)
+      ipcRenderer.on('app:update-status', listener)
+      return () => ipcRenderer.removeListener('app:update-status', listener)
+    }
   },
   skills: {
     listGlobal: () => ipcRenderer.invoke('skills:list-global'),

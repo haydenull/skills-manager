@@ -15,6 +15,12 @@ export type AppUpdateStatus = {
   status: 'idle' | 'checking' | 'not-available' | 'available' | 'downloading' | 'downloaded' | 'error'
   currentVersion: string
   update?: AppUpdateInfo
+  downloadProgress?: {
+    percent: number
+    transferred: number
+    total: number
+    bytesPerSecond: number
+  }
   message?: string
 }
 

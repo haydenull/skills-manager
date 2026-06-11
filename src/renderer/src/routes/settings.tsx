@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Input, Spinner, useTheme } from '@heroui/react'
+import { Button, Input, ProgressBar, Spinner, useTheme } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
 import {
   RiDeleteBinLine,
@@ -40,6 +40,8 @@ function SettingsPage(): React.JSX.Element {
   useEffect(() => {
     window.api.app.getInfo().then(setAppInfo)
   }, [])
+
+  useEffect(() => window.api.app.onUpdateStatus(setUpdateStatus), [])
 
   async function openFolder(target: SettingsFolderTarget, agentId?: AgentId): Promise<void> {
     setOpenError('')
@@ -291,6 +293,8 @@ function UpdateRow({
   const hasUpdate = status?.status === 'available'
   const isDownloaded = status?.status === 'downloaded'
   const isError = status?.status === 'error'
+  const isDownloading = status?.status === 'downloading'
+  const progress = Math.round(status?.downloadProgress?.percent ?? 0)
   const message = getUpdateMessage(status)
 
   return (
@@ -333,6 +337,17 @@ function UpdateRow({
           )}
         </div>
       </div>
+      {isDownloading && (
+        <ProgressBar aria-label="下载更新进度" value={progress} maxValue={100} className="mt-4" color="accent" size="sm">
+          <div className="mb-1 flex items-center justify-between text-xs text-muted">
+            <ProgressBar.Output>下载进度</ProgressBar.Output>
+            <span>{progress}%</span>
+          </div>
+          <ProgressBar.Track>
+            <ProgressBar.Fill />
+          </ProgressBar.Track>
+        </ProgressBar>
+      )}
     </div>
   )
 }
