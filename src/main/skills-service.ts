@@ -340,7 +340,8 @@ export class SkillsService {
 
   async checkUpdates(names: string[]): Promise<SkillUpdateStatus[]> {
     const lock = await this.readLock()
-    const statuses: SkillUpdateStatus[] = []
+    const statuses: Array<SkillUpdateStatus | undefined> = []
+    const groups = new Map<string, { sourceInfo: SourceInfo; items: Array<{ entry: LockEntry; index: number }> }>()
 
     for (const name of names) {
       const entry = lock.skills[sanitizeName(name)]
@@ -348,13 +349,16 @@ export class SkillsService {
 
       try {
         const sourceInfo = getLockEntrySource(entry)
-        await this.withRepositorySnapshot(sourceInfo, async (snapshot) => {
-          const latestFolderSha = await this.getSkillFolderShaFromSnapshot(snapshot, entry.skillPath)
-          statuses.push({
-            name: entry.name,
-            hasUpdate: !latestFolderSha || latestFolderSha !== entry.folderSha
-          })
-        })
+        const key = getUpdateSourceKey(sourceInfo)
+        const group = groups.get(key)
+        const item = { entry, index: statuses.length }
+        statuses.push(undefined)
+
+        if (group) {
+          group.items.push(item)
+        } else {
+          groups.set(key, { sourceInfo, items: [item] })
+        }
       } catch (error) {
         statuses.push({
           name: entry.name,
@@ -364,7 +368,29 @@ export class SkillsService {
       }
     }
 
-    return statuses
+    for (const group of groups.values()) {
+      try {
+        await this.withRepositorySnapshot(group.sourceInfo, async (snapshot) => {
+          for (const { entry, index } of group.items) {
+            const latestFolderSha = await this.getSkillFolderShaFromSnapshot(snapshot, entry.skillPath)
+            statuses[index] = {
+              name: entry.name,
+              hasUpdate: !latestFolderSha || latestFolderSha !== entry.folderSha
+            }
+          }
+        })
+      } catch (error) {
+        for (const { entry, index } of group.items) {
+          statuses[index] = {
+            name: entry.name,
+            hasUpdate: false,
+            error: `Failed to check updates for ${entry.name}: ${getErrorMessage(error)}`
+          }
+        }
+      }
+    }
+
+    return statuses.filter((status): status is SkillUpdateStatus => Boolean(status))
   }
 
   async remove(request: RemoveRequest): Promise<OperationResult> {
@@ -998,6 +1024,18 @@ function isSameSource(a: SourceInfo, b: SourceInfo): boolean {
     a.ref === b.ref &&
     normalizeSubpath(a.subpath) === normalizeSubpath(b.subpath)
   )
+}
+
+function getUpdateSourceKey(source: SourceInfo): string {
+  if (source.provider === 'github') {
+    return JSON.stringify(['github', source.owner?.toLowerCase(), source.repo?.toLowerCase(), source.ref || ''])
+  }
+
+  if (source.provider === 'local') {
+    return JSON.stringify(['local', resolve(source.localPath!)])
+  }
+
+  return JSON.stringify(['gitlab', source.host?.toLowerCase(), source.projectPath?.toLowerCase(), source.ref || '', normalizeSubpath(source.subpath)])
 }
 
 function resolveGitLabSource(input: string): SourceInfo {
