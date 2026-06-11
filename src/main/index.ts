@@ -205,6 +205,7 @@ app.whenReady().then(() => {
   ipcMain.handle('skills:update', (_event, names: string[]) => skillsService.update(names))
   ipcMain.handle('skills:remove', (_event, request) => skillsService.remove(request))
   ipcMain.handle('skills:save-gitlab-token', (_event, host: string, token: string) => skillsService.saveGitLabToken(host, token))
+  ipcMain.handle('skills:get-gitlab-token', (_event, host: string) => skillsService.getGitLabToken(host))
   ipcMain.handle('skills:delete-gitlab-token', (_event, host: string) => skillsService.deleteGitLabToken(host))
   ipcMain.handle('skills:start-debug', (_event, name: string) => skillsService.startDebug(name))
   ipcMain.handle('skills:stop-debug', (_event, name: string) => skillsService.stopDebug(name))

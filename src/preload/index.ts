@@ -20,6 +20,7 @@ const api = {
     update: (names: string[]) => ipcRenderer.invoke('skills:update', names),
     remove: (request: RemoveRequest) => ipcRenderer.invoke('skills:remove', request),
     saveGitLabToken: (host: string, token: string) => ipcRenderer.invoke('skills:save-gitlab-token', host, token),
+    getGitLabToken: (host: string) => ipcRenderer.invoke('skills:get-gitlab-token', host),
     deleteGitLabToken: (host: string) => ipcRenderer.invoke('skills:delete-gitlab-token', host),
     startDebug: (name: string) => ipcRenderer.invoke('skills:start-debug', name),
     stopDebug: (name: string) => ipcRenderer.invoke('skills:stop-debug', name),

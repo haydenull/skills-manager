@@ -1,13 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Input, Spinner, useTheme } from '@heroui/react'
+import { toast } from '@heroui/react/toast'
 import {
   RiDeleteBinLine,
   RiDownloadLine,
+  RiFileCopyLine,
   RiFolderLine,
+  RiMoonLine,
   RiRefreshLine,
   RiRestartLine,
-  RiMoonLine,
   RiSaveLine,
   RiSettings3Line,
   RiSunLine
@@ -93,6 +95,22 @@ function SettingsPage(): React.JSX.Element {
     setGitlabBusy('')
   }
 
+  async function copyGitLabToken(host: string): Promise<void> {
+    setGitlabBusy(`copy:${host}`)
+    const token = await window.api.skills.getGitLabToken(host)
+    if (token) {
+      await navigator.clipboard.writeText(token)
+      toast.success('已复制 GitLab token', {
+        description: host
+      })
+    } else {
+      toast.danger('未找到 GitLab token', {
+        description: host
+      })
+    }
+    setGitlabBusy('')
+  }
+
   if (!settings) {
     return (
       <section className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface p-8 text-muted">
@@ -139,6 +157,7 @@ function SettingsPage(): React.JSX.Element {
           onHostChange={setGitlabHost}
           onTokenChange={setGitlabToken}
           onSave={() => void saveGitLabToken()}
+          onCopy={(host) => void copyGitLabToken(host)}
           onDelete={(host) => void deleteGitLabToken(host)}
         />
         <PathRow label="应用数据目录" value={settings.appDataPath} onOpen={() => void openFolder('app-data')} />
@@ -165,6 +184,7 @@ function GitLabTokenRow({
   onHostChange,
   onTokenChange,
   onSave,
+  onCopy,
   onDelete
 }: {
   hosts: string[]
@@ -175,6 +195,7 @@ function GitLabTokenRow({
   onHostChange: (value: string) => void
   onTokenChange: (value: string) => void
   onSave: () => void
+  onCopy: (host: string) => void
   onDelete: (host: string) => void
 }): React.JSX.Element {
   const isSaving = busy === 'save'
@@ -211,20 +232,36 @@ function GitLabTokenRow({
                 <div className="break-all text-xs font-medium text-foreground">{configuredHost}</div>
                 <div className="mt-0.5 text-xs text-muted">已配置</div>
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onPress={() => onDelete(configuredHost)}
-                isPending={busy === configuredHost}
-                isDisabled={busy !== ''}
-              >
-                {({ isPending }) => (
-                  <span className="inline-flex items-center gap-1.5">
-                    {isPending ? <Spinner color="current" size="sm" /> : <RiDeleteBinLine size={16} />}
-                    删除
-                  </span>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => onCopy(configuredHost)}
+                  isPending={busy === `copy:${configuredHost}`}
+                  isDisabled={busy !== ''}
+                >
+                  {({ isPending }) => (
+                    <span className="inline-flex items-center gap-1.5">
+                      {isPending ? <Spinner color="current" size="sm" /> : <RiFileCopyLine size={16} />}
+                      复制
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => onDelete(configuredHost)}
+                  isPending={busy === configuredHost}
+                  isDisabled={busy !== ''}
+                >
+                  {({ isPending }) => (
+                    <span className="inline-flex items-center gap-1.5">
+                      {isPending ? <Spinner color="current" size="sm" /> : <RiDeleteBinLine size={16} />}
+                      删除
+                    </span>
+                  )}
+                </Button>
+              </div>
             </div>
           ))}
         </div>

@@ -179,6 +179,12 @@ export class SkillsService {
     return { ok: true, logs: [`已保存 ${normalizedHost} 的 GitLab token。`] }
   }
 
+  async getGitLabToken(host: string): Promise<string> {
+    const normalizedHost = normalizeGitLabHost(host)
+    const settings = await this.readSettings()
+    return settings.gitlabTokens[normalizedHost] ?? ''
+  }
+
   async deleteGitLabToken(host: string): Promise<OperationResult> {
     const normalizedHost = normalizeGitLabHost(host)
     const settings = await this.readSettings()

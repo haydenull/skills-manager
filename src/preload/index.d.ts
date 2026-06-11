@@ -31,6 +31,7 @@ type SkillsApi = {
   update: (names: string[]) => Promise<OperationResult>
   remove: (request: RemoveRequest) => Promise<OperationResult>
   saveGitLabToken: (host: string, token: string) => Promise<OperationResult>
+  getGitLabToken: (host: string) => Promise<string>
   deleteGitLabToken: (host: string) => Promise<OperationResult>
   startDebug: (name: string) => Promise<OperationResult>
   stopDebug: (name: string) => Promise<OperationResult>
