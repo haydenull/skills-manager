@@ -7,8 +7,7 @@ const api = {
   app: {
     getInfo: () => ipcRenderer.invoke('app:get-info'),
     checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
-    downloadUpdate: () => ipcRenderer.invoke('app:download-update'),
-    installUpdate: () => ipcRenderer.invoke('app:install-update'),
+    openReleasePage: () => ipcRenderer.invoke('app:open-release-page'),
     onUpdateStatus: (callback: (status: AppUpdateStatus) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus): void => callback(status)
       ipcRenderer.on('app:update-status', listener)

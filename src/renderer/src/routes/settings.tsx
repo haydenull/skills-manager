@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Input, ProgressBar, Spinner, useTheme } from '@heroui/react'
+import { Button, Input, Spinner, useTheme } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
 import {
   RiDeleteBinLine,
@@ -9,7 +9,6 @@ import {
   RiFolderLine,
   RiMoonLine,
   RiRefreshLine,
-  RiRestartLine,
   RiSaveLine,
   RiSettings3Line,
   RiSunLine
@@ -55,25 +54,10 @@ function SettingsPage(): React.JSX.Element {
     setUpdateBusy('')
   }
 
-  async function downloadUpdate(): Promise<void> {
-    setUpdateBusy('download')
-    setUpdateStatus(await window.api.app.downloadUpdate())
+  async function openReleasePage(): Promise<void> {
+    setUpdateBusy('release')
+    await window.api.app.openReleasePage()
     setUpdateBusy('')
-  }
-
-  async function installUpdate(): Promise<void> {
-    setUpdateBusy('install')
-    const result = await window.api.app.installUpdate()
-    if (!result.ok) {
-      const message = result.logs.join('\n')
-      setUpdateStatus({
-        status: message === '没有已下载的更新' && updateStatus?.update ? 'available' : 'error',
-        currentVersion: appInfo?.version ?? '',
-        update: updateStatus?.update,
-        message
-      })
-      setUpdateBusy('')
-    }
   }
 
   async function saveGitLabToken(): Promise<void> {
@@ -148,8 +132,7 @@ function SettingsPage(): React.JSX.Element {
           status={updateStatus}
           busy={updateBusy}
           onCheck={() => void checkUpdates()}
-          onDownload={() => void downloadUpdate()}
-          onInstall={() => void installUpdate()}
+          onOpenReleasePage={() => void openReleasePage()}
         />
         <GitLabTokenRow
           hosts={settings.gitlabTokenHosts}
@@ -279,22 +262,17 @@ function UpdateRow({
   status,
   busy,
   onCheck,
-  onDownload,
-  onInstall
+  onOpenReleasePage
 }: {
   version?: string
   status: AppUpdateStatus | null
   busy: string
   onCheck: () => void
-  onDownload: () => void
-  onInstall: () => void
+  onOpenReleasePage: () => void
 }): React.JSX.Element {
   const isBusy = busy !== ''
   const hasUpdate = status?.status === 'available'
-  const isDownloaded = status?.status === 'downloaded'
   const isError = status?.status === 'error'
-  const isDownloading = status?.status === 'downloading'
-  const progress = Math.round(status?.downloadProgress?.percent ?? 0)
   const message = getUpdateMessage(status)
 
   return (
@@ -316,38 +294,17 @@ function UpdateRow({
             )}
           </Button>
           {hasUpdate && (
-            <Button size="sm" variant="primary" onPress={onDownload} isDisabled={isBusy} isPending={busy === 'download'}>
+            <Button size="sm" variant="primary" onPress={onOpenReleasePage} isDisabled={isBusy} isPending={busy === 'release'}>
               {({ isPending }) => (
                 <span className="inline-flex items-center gap-1.5">
                   {isPending ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={16} />}
-                  下载更新
-                </span>
-              )}
-            </Button>
-          )}
-          {isDownloaded && (
-            <Button size="sm" variant="primary" onPress={onInstall} isDisabled={isBusy} isPending={busy === 'install'}>
-              {({ isPending }) => (
-                <span className="inline-flex items-center gap-1.5">
-                  {isPending ? <Spinner color="current" size="sm" /> : <RiRestartLine size={16} />}
-                  重启安装
+                  打开下载页
                 </span>
               )}
             </Button>
           )}
         </div>
       </div>
-      {isDownloading && (
-        <ProgressBar aria-label="下载更新进度" value={progress} maxValue={100} className="mt-4" color="accent" size="sm">
-          <div className="mb-1 flex items-center justify-between text-xs text-muted">
-            <ProgressBar.Output>下载进度</ProgressBar.Output>
-            <span>{progress}%</span>
-          </div>
-          <ProgressBar.Track>
-            <ProgressBar.Fill />
-          </ProgressBar.Track>
-        </ProgressBar>
-      )}
     </div>
   )
 }
@@ -356,8 +313,7 @@ function getUpdateMessage(status: AppUpdateStatus | null): string {
   if (!status) return ''
   if (status.message) return status.message
   if (status.status === 'checking') return '正在检查更新...'
-  if (status.status === 'available') return '发现新版本，可以下载更新'
-  if (status.status === 'downloading') return '正在下载更新...'
+  if (status.status === 'available') return '发现新版本，请前往 Releases 页面下载对应芯片版本的 dmg 手动安装。'
   return ''
 }
 

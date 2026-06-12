@@ -1,11 +1,13 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { existsSync, mkdirSync } from 'fs'
+import { mkdirSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { SkillsService } from './skills-service'
-import type { AppUpdateInfo, AppUpdateStatus, OperationResult } from '../shared/skills-types'
+import type { AppUpdateInfo, AppUpdateStatus } from '../shared/skills-types'
+
+const releasePageUrl = 'https://github.com/haydenull/skills-manager/releases/latest'
 
 if (process.env.SKILLS_MANAGER_LOCAL_DEBUG === '1') {
   const userDataPath = join(process.cwd(), '.debug', 'userData')
@@ -21,23 +23,12 @@ let appUpdateStatus: AppUpdateStatus = {
   currentVersion: app.getVersion()
 }
 
-type AutoUpdaterWithDownloadedUpdate = typeof autoUpdater & {
-  downloadedUpdateHelper?: {
-    file: string | null
-  } | null
-}
-
 function toAppUpdateInfo(info: UpdateInfo): AppUpdateInfo {
   return {
     version: info.version,
     releaseName: info.releaseName ?? undefined,
     releaseDate: info.releaseDate
   }
-}
-
-function getDownloadedUpdateFile(): string | null {
-  const file = (autoUpdater as AutoUpdaterWithDownloadedUpdate).downloadedUpdateHelper?.file
-  return file && existsSync(file) ? file : null
 }
 
 function setAppUpdateStatus(status: AppUpdateStatus): AppUpdateStatus {
@@ -79,35 +70,6 @@ autoUpdater.on('update-not-available', () => {
   })
 })
 
-autoUpdater.on('update-downloaded', (info) => {
-  setAppUpdateStatus({
-    status: 'downloaded',
-    currentVersion: app.getVersion(),
-    update: toAppUpdateInfo(info),
-    downloadProgress: {
-      percent: 100,
-      transferred: 1,
-      total: 1,
-      bytesPerSecond: 0
-    },
-    message: '更新已下载，重启后安装'
-  })
-})
-
-autoUpdater.on('download-progress', (progress) => {
-  setAppUpdateStatus({
-    status: 'downloading',
-    currentVersion: app.getVersion(),
-    update: appUpdateStatus.update,
-    downloadProgress: {
-      percent: progress.percent,
-      transferred: progress.transferred,
-      total: progress.total,
-      bytesPerSecond: progress.bytesPerSecond
-    }
-  })
-})
-
 autoUpdater.on('error', (error) => {
   setAppUpdateStatus({
     status: 'error',
@@ -134,65 +96,6 @@ async function checkForAppUpdates(): Promise<AppUpdateStatus> {
       currentVersion: app.getVersion(),
       message: error instanceof Error ? error.message : String(error)
     })
-  }
-}
-
-async function downloadAppUpdate(): Promise<AppUpdateStatus> {
-  if (is.dev) return createDevUpdateStatus()
-  if (appUpdateStatus.status !== 'available') {
-    return setAppUpdateStatus({
-      status: 'error',
-      currentVersion: app.getVersion(),
-      update: appUpdateStatus.update,
-      message: '没有可下载的更新'
-    })
-  }
-
-  setAppUpdateStatus({
-    status: 'downloading',
-    currentVersion: app.getVersion(),
-    update: appUpdateStatus.update,
-    downloadProgress: {
-      percent: 0,
-      transferred: 0,
-      total: 0,
-      bytesPerSecond: 0
-    }
-  })
-
-  try {
-    await autoUpdater.downloadUpdate()
-    return setAppUpdateStatus({
-      status: 'downloaded',
-      currentVersion: app.getVersion(),
-      update: appUpdateStatus.update,
-      downloadProgress: {
-        percent: 100,
-        transferred: 1,
-        total: 1,
-        bytesPerSecond: 0
-      },
-      message: '更新已下载，重启后安装'
-    })
-  } catch (error) {
-    return setAppUpdateStatus({
-      status: 'error',
-      currentVersion: app.getVersion(),
-      update: appUpdateStatus.update,
-      message: error instanceof Error ? error.message : String(error)
-    })
-  }
-}
-
-function installAppUpdate(): OperationResult {
-  if (is.dev) return { ok: false, logs: ['开发环境不支持安装更新'] }
-  if (appUpdateStatus.status !== 'downloaded' && getDownloadedUpdateFile() === null) return { ok: false, logs: ['没有已下载的更新'] }
-
-  try {
-    autoUpdater.quitAndInstall()
-    return { ok: true, logs: ['正在重启安装更新'] }
-  } catch (error) {
-    return { ok: false, logs: [error instanceof Error ? error.message : String(error)] }
   }
 }
 
@@ -259,8 +162,7 @@ app.whenReady().then(() => {
   ipcMain.handle('skills:open-settings-folder', (_event, target, agentId) => skillsService.openSettingsFolder(target, agentId))
   ipcMain.handle('app:get-info', () => ({ version: app.getVersion() }))
   ipcMain.handle('app:check-for-updates', () => checkForAppUpdates())
-  ipcMain.handle('app:download-update', () => downloadAppUpdate())
-  ipcMain.handle('app:install-update', () => installAppUpdate())
+  ipcMain.handle('app:open-release-page', () => shell.openExternal(releasePageUrl))
 
   createWindow()
 

@@ -6,7 +6,6 @@ import type {
   AppUpdateStatus,
   InstallRequest,
   InstalledSkill,
-  OperationResult,
   RemoveRequest,
   SettingsInfo,
   SettingsFolderTarget,
@@ -17,8 +16,7 @@ import type {
 type AppApi = {
   getInfo: () => Promise<AppInfo>
   checkForUpdates: () => Promise<AppUpdateStatus>
-  downloadUpdate: () => Promise<AppUpdateStatus>
-  installUpdate: () => Promise<OperationResult>
+  openReleasePage: () => Promise<void>
   onUpdateStatus: (callback: (status: AppUpdateStatus) => void) => () => void
 }
 
