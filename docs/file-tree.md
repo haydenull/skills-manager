@@ -7,7 +7,7 @@
 ```text
 .
 ├── AGENTS.md                    # 面向 AI agent 的仓库规则、命令和文档索引
-├── README.md                    # 项目简介、安装、开发和平台构建命令
+├── README.md                    # 项目简介、安装、使用和开发说明入口
 ├── package.json                 # 项目元信息、脚本、依赖版本和 Electron 入口
 ├── pnpm-lock.yaml               # pnpm 依赖锁文件，修改依赖后应同步提交
 ├── electron.vite.config.ts      # Electron Vite 配置，包含 renderer 的 @renderer 别名
@@ -22,7 +22,9 @@
 │   ├── icon.ico                 # Windows 应用图标
 │   └── icon.png                 # 通用应用图标
 ├── docs/                        # 项目说明文档目录
-│   └── file-tree.md             # 当前文件树说明
+│   ├── development.md           # 开发环境准备、常用命令和本地开发隔离说明
+│   ├── file-tree.md             # 当前文件树说明
+│   └── installation.md          # macOS 安装包下载、安装和解除隔离标记说明
 ├── resources/                   # 应用运行或打包时引用的资源
 │   └── icon.png                 # 应用资源图标
 └── src/                         # 源码目录
@@ -37,16 +39,28 @@
     └── renderer/                # React 渲染进程代码和 HTML 入口
         ├── index.html           # renderer HTML 入口
         └── src/                 # renderer React 源码
-            ├── App.tsx          # React 应用根组件
             ├── env.d.ts         # renderer 环境类型声明
             ├── main.tsx         # React 挂载入口
+            ├── routeTree.gen.ts # TanStack Router 生成的路由树
+            ├── skills-queries.ts # skills 相关 React Query 配置
             ├── assets/          # 渲染层样式和静态图片资源
+            │   ├── app-logo.svg # 应用 Logo
+            │   ├── app-logo-light-blue.svg # 浅蓝 Logo 变体
+            │   ├── app-logo-mint.svg # 薄荷绿 Logo 变体
+            │   ├── app-logo-soft-violet.svg # 淡紫 Logo 变体
             │   ├── base.css     # 基础样式
             │   ├── electron.svg # Electron 图标资源
             │   ├── main.css     # 主样式入口
             │   └── wavy-lines.svg # 波纹背景资源
-            └── components/      # renderer 使用的 React 组件
-                └── Versions.tsx # 版本信息组件
+            ├── components/      # renderer 使用的 React 组件
+            │   └── Versions.tsx # 版本信息组件
+            ├── lib/             # renderer 工具函数
+            │   └── cn.ts        # className 合并工具
+            └── routes/          # TanStack Router 页面路由
+                ├── __root.tsx   # 根布局和顶部导航
+                ├── index.tsx    # 已安装 Skill 管理页
+                ├── install.tsx  # 安装新 Skill 页面
+                └── settings.tsx # 设置页面
 ```
 
 ## 配置文件说明
@@ -60,7 +74,7 @@
 - `tsconfig.node.json` - main、preload、shared 和构建配置文件的 TypeScript 配置。
 - `tsconfig.web.json` - renderer、preload 声明和 shared 类型的 TypeScript 配置。
 - `AGENTS.md` - 面向 AI agent 的仓库规则、常用命令和文档索引。
-- `README.md` - 项目简介、安装、开发和平台构建命令。
+- `README.md` - 项目简介、安装、使用和开发说明入口。
 
 ## 生成目录
 

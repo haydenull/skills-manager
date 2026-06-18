@@ -18,8 +18,8 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 从自部署 GitLab 安装 Skill 前，需要先在“设置”页面配置对应 host 的 Personal access token。
 
-1. 打开左侧的“设置”页面。
-2. 在 `GitLab Host` 中填写 GitLab 域名，例如 `gitlab.example.com`，不要包含 `https://`。
+1. 打开顶部导航中的“设置”页面。
+2. 在 `GitLab Host` 中填写 GitLab 域名，例如 `gitlab.example.com`。
 3. 在 `GitLab Token` 中填写 Personal access token。
 4. 点击“保存”。
 
@@ -27,7 +27,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 ### 安装 Skill
 
-1. 打开左侧的“安装”页面。
+1. 打开顶部导航中的“安装新 Skill”页面。
 2. 在来源输入框中填写 Skill 来源。
 3. 点击“预览”，查看可安装的 skills。
 4. 勾选要安装的 Skill。
@@ -72,7 +72,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 - 切换深色或浅色外观
 - 配置或删除自部署 GitLab 的 Personal access token
-- 检查、下载并安装应用更新
+- 检查应用更新，并打开 Releases 下载页
 - 打开应用数据目录
 - 打开 Claude Code skills 目录
 - 打开 Codex skills 目录

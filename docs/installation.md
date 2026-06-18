@@ -1,6 +1,6 @@
 # 安装说明
 
-当前仅支持 macOS。
+当前发布的安装包仅提供 macOS 版本。
 
 1. 打开 [Releases](https://github.com/haydenull/skills-manager/releases) 页面。
 2. 下载适合当前 Mac 芯片的 `.dmg` 安装包：
