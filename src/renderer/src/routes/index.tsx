@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Chip, Spinner, Table, Tooltip } from '@heroui/react'
+import { toast } from '@heroui/react/toast'
 import {
   RiClaudeLine,
   RiBugLine,
@@ -56,6 +57,11 @@ function DashboardPage(): React.JSX.Element {
       const result = await action()
       await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
       if (invalidateUpdates) await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.updatesRoot })
+      if (result && !result.ok) {
+        toast.danger('操作失败', {
+          description: result.logs.slice(0, 3).join('\n') || '请稍后重试。'
+        })
+      }
       return result
     }
   })

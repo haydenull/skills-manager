@@ -108,6 +108,10 @@ function InstallPage(): React.JSX.Element {
         toast.success('安装完成', {
           description: `已安装 ${installedCount} 个 Skill 到 ${installedAgentLabels}。`
         })
+      } else {
+        toast.danger('安装失败', {
+          description: result.logs.slice(0, 3).join('\n') || '请稍后重试。'
+        })
       }
       return result
     })

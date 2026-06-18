@@ -227,6 +227,15 @@ export class SkillsService {
           return { ok: false, logs: [invalidSkill.installMessage!] }
         }
 
+        const conflicts = await this.getAgentSkillPathConflicts(
+          selectedSkills.map((skill) => skill.name),
+          request.agents,
+          lock
+        )
+        if (conflicts.length > 0) {
+          return { ok: false, logs: conflicts }
+        }
+
         for (const skill of selectedSkills) {
           const skillName = sanitizeName(skill.name)
           const storagePath = this.getSkillStoragePath(skillName)
@@ -272,6 +281,7 @@ export class SkillsService {
   async addAgents(request: AgentUpdateRequest): Promise<OperationResult> {
     const lock = await this.readLock()
     const logs: string[] = []
+    const conflicts: string[] = []
 
     for (const name of request.names) {
       const skillName = sanitizeName(name)
@@ -283,16 +293,25 @@ export class SkillsService {
       }
 
       const sourcePath = entry.debugPath || entry.storagePath
+      const linkedAgents: AgentId[] = []
       for (const agent of request.agents) {
+        const conflict = await this.getAgentSkillPathConflict(entry.name, agent, lock)
+        if (conflict) {
+          logs.push(conflict)
+          conflicts.push(conflict)
+          continue
+        }
+
         await this.linkOrCopy(sourcePath, join(AGENTS[agent].dir(), skillName))
         logs.push(`Linked ${entry.name} for ${AGENTS[agent].displayName}.`)
+        linkedAgents.push(agent)
       }
 
-      entry.agents = Array.from(new Set([...entry.agents, ...request.agents]))
+      entry.agents = Array.from(new Set([...entry.agents, ...linkedAgents]))
     }
 
     await this.writeLock(lock)
-    return { ok: true, logs }
+    return { ok: conflicts.length === 0, logs }
   }
 
   async update(names: string[]): Promise<OperationResult> {
@@ -502,6 +521,34 @@ export class SkillsService {
 
   private getSkillStoragePath(skillName: string): string {
     return join(this.getUserDataPath(), 'skills', skillName)
+  }
+
+  private async getAgentSkillPathConflicts(skillNames: string[], agents: AgentId[], lock: LockFile): Promise<string[]> {
+    const conflicts: string[] = []
+
+    for (const skillName of skillNames) {
+      for (const agent of agents) {
+        const conflict = await this.getAgentSkillPathConflict(skillName, agent, lock)
+        if (conflict) conflicts.push(conflict)
+      }
+    }
+
+    return conflicts
+  }
+
+  private async getAgentSkillPathConflict(skillName: string, agent: AgentId, lock: LockFile): Promise<string | null> {
+    const safeName = sanitizeName(skillName)
+    const entry = lock.skills[safeName]
+    if (entry?.agents.includes(agent)) return null
+
+    try {
+      await lstat(join(AGENTS[agent].dir(), safeName))
+    } catch (error) {
+      if (isNotFoundError(error)) return null
+      throw error
+    }
+
+    return `${skillName} 与 ${AGENTS[agent].displayName} 中已有 Skill 同名，但该 Skill 不是由本应用安装，请先手动移除或更名。`
   }
 
   private async readLock(): Promise<LockFile> {
@@ -1244,4 +1291,8 @@ function getGitHubHeaders(): Record<string, string> {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
