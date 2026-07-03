@@ -82,6 +82,7 @@ jobs:
             dist/*.zip
             dist/*.yml
             dist/*.blockmap
+            !dist/builder-debug.yml
           if-no-files-found: error
 
   build-windows:
@@ -120,6 +121,7 @@ jobs:
             dist/*.exe
             dist/*.yml
             dist/*.blockmap
+            !dist/builder-debug.yml
           if-no-files-found: error
 
   publish-release:
