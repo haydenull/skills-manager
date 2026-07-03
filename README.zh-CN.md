@@ -42,7 +42,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 - GitHub 仓库完整 URL
 - 自部署 GitLab HTTPS 地址，例如 `https://gitlab.example.com/group/repo`
 - 自部署 GitLab 目录地址，例如 `https://gitlab.example.com/group/repo/-/tree/main/skills`
-- 本地目录，例如 `/Users/me/skills` 或 `~/skills`
+- 本地目录，例如 `/Users/me/skills`、`~/skills` 或 `C:\Users\me\skills`
 
 本地目录既可以是单个 skill 目录，也可以是包含多个 skills 的集合目录。
 

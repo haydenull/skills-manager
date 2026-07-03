@@ -12,22 +12,13 @@ permissions:
   contents: write
 
 jobs:
-  build-mac:
+  validate-release:
     runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.7.0
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
 
       - name: Validate version
         run: |
@@ -52,6 +43,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-mac:
+    runs-on: macos-latest
+    needs: validate-release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Update package version
         run: pnpm version "${{ inputs.version }}" --no-git-tag-version
 
@@ -66,6 +73,83 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Upload mac artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.yml
+            dist/*.blockmap
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    needs: validate-release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Update package version
+        run: pnpm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build renderer and main
+        run: pnpm run build
+
+      - name: Build Windows artifacts
+        run: pnpm exec electron-builder --win --publish never
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            dist/*.exe
+            dist/*.yml
+            dist/*.blockmap
+          if-no-files-found: error
+
+  publish-release:
+    runs-on: macos-latest
+    needs:
+      - build-mac
+      - build-windows
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Update package version
+        run: pnpm version "${{ inputs.version }}" --no-git-tag-version
+
       - name: Publish release
         run: |
           set -euo pipefail
@@ -74,7 +158,7 @@ jobs:
           assets=()
           while IFS= read -r -d '' file; do
             assets+=("$file")
-          done < <(find dist -maxdepth 1 -type f -print0)
+          done < <(find release-assets -type f -print0)
 
           if [[ ${#assets[@]} -eq 0 ]]; then
             echo "No release assets found"

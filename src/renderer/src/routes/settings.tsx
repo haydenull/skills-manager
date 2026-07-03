@@ -313,7 +313,7 @@ function getUpdateMessage(status: AppUpdateStatus | null): string {
   if (!status) return ''
   if (status.message) return status.message
   if (status.status === 'checking') return '正在检查更新...'
-  if (status.status === 'available') return '发现新版本，请前往 Releases 页面下载对应芯片版本的 dmg 手动安装。'
+  if (status.status === 'available') return '发现新版本，请前往 Releases 页面下载对应系统的安装包手动安装。'
   return ''
 }
 

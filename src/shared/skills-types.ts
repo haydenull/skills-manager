@@ -3,6 +3,7 @@ export type SettingsFolderTarget = 'app-data' | 'agent-skills'
 
 export type AppInfo = {
   version: string
+  platform: NodeJS.Platform
 }
 
 export type AppUpdateInfo = {

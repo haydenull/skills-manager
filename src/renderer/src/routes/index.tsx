@@ -393,9 +393,9 @@ function DashboardPage(): React.JSX.Element {
 function getRepositoryName(source: string): string {
   return (
     source
-      .replace(/\/$/, '')
+      .replace(/[\\/]+$/, '')
       .replace(/\.git$/, '')
-      .split(/[/:]/)
+      .split(/[/:\\]/)
       .at(-1) || source
   )
 }

@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, Card, Checkbox, CheckboxGroup, Chip, Input, Spinner, Switch } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
 import {
@@ -39,6 +39,7 @@ const STEP_ITEMS = [
 function InstallPage(): React.JSX.Element {
   const [source, setSource] = useState('')
   const [fullDepth, setFullDepth] = useState(false)
+  const [localPathExample, setLocalPathExample] = useState('~/skills')
   const [previewedSource, setPreviewedSource] = useState<string | null>(null)
   const [previews, setPreviews] = useState<SkillPreview[]>([])
   const [selectedPreviews, setSelectedPreviews] = useState<string[]>([])
@@ -49,6 +50,12 @@ function InstallPage(): React.JSX.Element {
   const installMutation = useMutation({
     mutationFn: window.api.skills.install
   })
+
+  useEffect(() => {
+    window.api.app.getInfo().then((info) => {
+      setLocalPathExample(info.platform === 'win32' ? 'C:\\Users\\me\\skills' : '~/skills')
+    })
+  }, [])
 
   const selectedPreviewItems = useMemo(
     () => previews.filter((skill) => selectedPreviews.includes(skill.skillPath) && !skill.installState),
@@ -223,7 +230,7 @@ function InstallPage(): React.JSX.Element {
           <Card.Content className="gap-0 px-5 py-4">
             <Input
               aria-label="Source"
-              placeholder="vercel-labs/agent-skills、https://gitlab.example.com/group/repo/-/tree/main/src 或 ~/skills"
+              placeholder={`vercel-labs/agent-skills、https://gitlab.example.com/group/repo/-/tree/main/src 或 ${localPathExample}`}
               value={source}
               onChange={(event) => updateSource(event.target.value)}
               disabled={busy}

@@ -42,7 +42,7 @@ Supported source formats:
 - Full GitHub repository URL
 - Self-hosted GitLab HTTPS URL, e.g. `https://gitlab.example.com/group/repo`
 - Self-hosted GitLab directory URL, e.g. `https://gitlab.example.com/group/repo/-/tree/main/skills`
-- Local directory, e.g. `/Users/me/skills` or `~/skills`
+- Local directory, e.g. `/Users/me/skills`, `~/skills`, or `C:\Users\me\skills`
 
 A local directory can be either a single skill directory or a collection directory containing multiple skills.
 

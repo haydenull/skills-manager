@@ -1068,7 +1068,7 @@ function isSameSource(a: SourceInfo, b: SourceInfo): boolean {
   }
 
   if (a.provider === 'local') {
-    return resolve(a.localPath!) === resolve(b.localPath!)
+    return normalizePathForComparison(a.localPath!) === normalizePathForComparison(b.localPath!)
   }
 
   return (
@@ -1085,7 +1085,7 @@ function getUpdateSourceKey(source: SourceInfo): string {
   }
 
   if (source.provider === 'local') {
-    return JSON.stringify(['local', resolve(source.localPath!)])
+    return JSON.stringify(['local', normalizePathForComparison(source.localPath!)])
   }
 
   return JSON.stringify(['gitlab', source.host?.toLowerCase(), source.projectPath?.toLowerCase(), source.ref || '', normalizeSubpath(source.subpath)])
@@ -1161,9 +1161,14 @@ async function validateDebugSkillPath(entry: LockEntry, debugPath: string): Prom
 }
 
 function isInside(basePath: string, targetPath: string): boolean {
-  const normalizedBase = resolve(basePath)
-  const normalizedTarget = resolve(targetPath)
+  const normalizedBase = normalizePathForComparison(basePath)
+  const normalizedTarget = normalizePathForComparison(targetPath)
   return normalizedTarget === normalizedBase || normalizedTarget.startsWith(normalizedBase + sep)
+}
+
+function normalizePathForComparison(path: string): string {
+  const normalizedPath = resolve(path)
+  return process.platform === 'win32' ? normalizedPath.toLowerCase() : normalizedPath
 }
 
 async function copyDirectory(source: string, target: string): Promise<void> {
