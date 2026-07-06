@@ -425,7 +425,8 @@ export class SkillsService {
     for (const name of request.names) {
       const skillName = sanitizeName(name)
       const entry = lock.skills[skillName]
-      const agents = request.agents.length > 0 ? request.agents : entry?.agents || []
+      const removeFromApp = request.agents.length === 0
+      const agents = removeFromApp ? entry?.agents || [] : request.agents
 
       for (const agent of agents) {
         await rm(join(AGENTS[agent].dir(), skillName), { recursive: true, force: true })
@@ -435,10 +436,12 @@ export class SkillsService {
       if (entry) {
         entry.agents = entry.agents.filter((agent) => !agents.includes(agent))
 
-        if (entry.agents.length === 0) {
+        if (removeFromApp) {
           await rm(entry.storagePath, { recursive: true, force: true })
           delete lock.skills[skillName]
           logs.push(`Removed ${skillName} from app storage.`)
+        } else if (entry.agents.length === 0) {
+          logs.push(`Kept ${skillName} in app storage with no agents.`)
         } else {
           logs.push(`Kept ${skillName} in app storage for remaining agents.`)
         }

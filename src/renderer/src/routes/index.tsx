@@ -315,7 +315,7 @@ function DashboardPage(): React.JSX.Element {
                               aria-label={`退出 ${skill.name} 调试`}
                               className="inline-flex size-8 items-center justify-center rounded-md border border-warning/40 bg-warning-soft text-warning-soft-foreground transition-colors hover:border-warning disabled:cursor-not-allowed disabled:opacity-50"
                               onClick={() => void stopDebug(skill)}
-                              disabled={busy}
+                              disabled={busy || skill.agents.length === 0}
                             >
                               <RiStopLine size={16} />
                             </button>
