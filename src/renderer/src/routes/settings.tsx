@@ -1,20 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Input, Spinner, useTheme } from '@heroui/react'
+import { Button, Input, Spinner, Tooltip, useTheme } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
 import {
+  RiComputerLine,
   RiDeleteBinLine,
   RiDownloadLine,
   RiFileCopyLine,
   RiFolderLine,
+  RiFolderOpenLine,
+  RiKey2Line,
   RiMoonLine,
   RiRefreshLine,
+  RiRestartLine,
   RiSaveLine,
   RiSettings3Line,
   RiSunLine
 } from '@remixicon/react'
 import { useEffect, useState } from 'react'
 import type { AgentId, AppInfo, AppUpdateStatus, SettingsFolderTarget } from '../../../shared/skills-types'
+import { cn } from '../lib/cn'
 import { skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/settings')({
@@ -34,7 +39,6 @@ function SettingsPage(): React.JSX.Element {
   const [gitlabBusy, setGitlabBusy] = useState('')
   const [gitlabMessage, setGitlabMessage] = useState('')
   const currentTheme = resolvedTheme ?? theme
-  const isDark = currentTheme === 'dark'
 
   useEffect(() => {
     window.api.app.getInfo().then(setAppInfo)
@@ -100,64 +104,121 @@ function SettingsPage(): React.JSX.Element {
 
   if (!settings) {
     return (
-      <section className="flex flex-1 items-center justify-center rounded-lg border border-border bg-surface p-8 text-muted">
-        <Spinner size="sm" />
+      <section className="min-h-full bg-background px-4 py-4 text-foreground">
+        <div className="flex min-h-64 items-center justify-center rounded-lg border border-border bg-surface p-8 text-muted shadow-surface">
+          <Spinner size="sm" />
+        </div>
       </section>
     )
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-5 shadow-surface">
-      <div className="flex items-center gap-2">
-        <RiSettings3Line size={18} className="text-accent" />
-        <h2 className="text-base font-medium">设置</h2>
-      </div>
-      <div className="mt-5 grid gap-4">
-        <div className="rounded-lg border border-border bg-surface-secondary p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-medium text-foreground">外观</div>
-              <div className="mt-1 text-xs text-muted">当前为{isDark ? '深色' : '浅色'}模式</div>
-            </div>
-            <Button variant="secondary" onPress={() => setTheme(isDark ? 'light' : 'dark')}>
-              <span className="inline-flex items-center gap-1.5">
-                {isDark ? <RiSunLine size={16} /> : <RiMoonLine size={16} />}
-                切换到{isDark ? '浅色' : '深色'}
-              </span>
-            </Button>
+    <section className="min-h-full bg-background px-4 py-4 text-foreground">
+      <div className="mx-auto max-w-[1180px]">
+        <header className="flex items-center gap-2.5">
+          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-accent/35 bg-accent-soft text-accent-soft-foreground">
+            <RiSettings3Line size={18} />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold leading-6 text-foreground">设置</h2>
+            <p className="text-xs text-muted">外观、更新、凭据与本地目录</p>
           </div>
-        </div>
-        <UpdateRow
-          version={appInfo?.version}
-          status={updateStatus}
-          busy={updateBusy}
-          onCheck={() => void checkUpdates()}
-          onOpenReleasePage={() => void openReleasePage()}
-        />
-        <GitLabTokenRow
-          hosts={settings.gitlabTokenHosts}
-          host={gitlabHost}
-          token={gitlabToken}
-          busy={gitlabBusy}
-          message={gitlabMessage}
-          onHostChange={setGitlabHost}
-          onTokenChange={setGitlabToken}
-          onSave={() => void saveGitLabToken()}
-          onCopy={(host) => void copyGitLabToken(host)}
-          onDelete={(host) => void deleteGitLabToken(host)}
-        />
-        <PathRow label="应用数据目录" value={settings.appDataPath} onOpen={() => void openFolder('app-data')} />
-        {settings.agents.map((agent) => (
-          <PathRow
-            key={agent.id}
-            label={`${agent.label} Skills 目录`}
-            value={agent.skillsPath}
-            onOpen={() => void openFolder('agent-skills', agent.id)}
+        </header>
+
+        <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+          <AppearanceCard theme={theme} resolvedTheme={currentTheme} onThemeChange={setTheme} />
+          <UpdateRow
+            version={appInfo?.version}
+            status={updateStatus}
+            busy={updateBusy}
+            onCheck={() => void checkUpdates()}
+            onOpenReleasePage={() => void openReleasePage()}
           />
-        ))}
-        {openError && <div className="rounded-lg border border-danger-soft bg-danger-soft p-3 text-xs text-danger-soft-foreground">{openError}</div>}
+        </div>
+
+        <div className="mt-3 grid gap-3">
+          <GitLabTokenRow
+            hosts={settings.gitlabTokenHosts}
+            host={gitlabHost}
+            token={gitlabToken}
+            busy={gitlabBusy}
+            message={gitlabMessage}
+            onHostChange={setGitlabHost}
+            onTokenChange={setGitlabToken}
+            onSave={() => void saveGitLabToken()}
+            onCopy={(host) => void copyGitLabToken(host)}
+            onDelete={(host) => void deleteGitLabToken(host)}
+          />
+          <LocalFoldersCard
+            appDataPath={settings.appDataPath}
+            agents={settings.agents}
+            onOpenAppData={() => void openFolder('app-data')}
+            onOpenAgent={(agentId) => void openFolder('agent-skills', agentId)}
+          />
+          {openError && (
+            <div className="rounded-lg border border-danger-soft bg-danger-soft p-3 text-xs text-danger-soft-foreground">{openError}</div>
+          )}
+        </div>
       </div>
     </section>
+  )
+}
+
+type AppTheme = 'system' | 'light' | 'dark'
+
+const THEME_OPTIONS = [
+  { id: 'system', label: '跟随系统', icon: RiComputerLine },
+  { id: 'light', label: '浅色', icon: RiSunLine },
+  { id: 'dark', label: '深色', icon: RiMoonLine }
+] satisfies Array<{ id: AppTheme; label: string; icon: typeof RiSunLine }>
+
+function AppearanceCard({
+  theme,
+  resolvedTheme,
+  onThemeChange
+}: {
+  theme: string
+  resolvedTheme: string | undefined
+  onThemeChange: (theme: string) => void
+}): React.JSX.Element {
+  const resolvedLabel = resolvedTheme === 'light' ? '浅色' : '深色'
+  const intentLabel = THEME_OPTIONS.find((item) => item.id === theme)?.label ?? '自定义'
+
+  return (
+    <div className="min-w-0 rounded-lg border border-border bg-surface p-4 shadow-surface">
+      <div className="flex items-start gap-2.5">
+        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-accent/35 bg-accent-soft text-accent-soft-foreground">
+          <RiComputerLine size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-foreground">外观</div>
+          <div className="mt-0.5 text-xs text-muted">{theme === 'system' ? `跟随系统，当前为${resolvedLabel}` : `当前为${intentLabel}`}</div>
+
+          <div className="mt-3">
+            <div className="grid grid-cols-3 rounded-md border border-border bg-surface-secondary p-0.5">
+              {THEME_OPTIONS.map((item) => {
+                const isSelected = theme === item.id
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={cn(
+                      'inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium transition-colors',
+                      isSelected ? 'bg-accent text-accent-foreground shadow-surface' : 'text-muted hover:bg-surface-hover hover:text-foreground'
+                    )}
+                    onClick={() => onThemeChange(item.id)}
+                  >
+                    <item.icon size={15} className="shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -187,18 +248,31 @@ function GitLabTokenRow({
   const isSaving = busy === 'save'
 
   return (
-    <div className="rounded-lg border border-border bg-surface-secondary p-4">
-      <div className="text-sm font-medium text-foreground">GitLab Token</div>
-      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <Input aria-label="GitLab Host" placeholder="gitlab.corp.youdao.com" value={host} onChange={(event) => onHostChange(event.target.value)} />
-        <Input
-          aria-label="GitLab Token"
-          type="password"
-          placeholder="Personal access token"
-          value={token}
-          onChange={(event) => onTokenChange(event.target.value)}
-        />
-        <Button size="sm" variant="primary" className="self-end" onPress={onSave} isPending={isSaving} isDisabled={busy !== ''}>
+    <div className="min-w-0 rounded-lg border border-border bg-surface p-4 shadow-surface">
+      <div className="flex items-start gap-2.5">
+        <RiKey2Line size={17} className="mt-0.5 shrink-0 text-warning" />
+        <div>
+          <div className="text-base font-semibold leading-6 text-foreground">GitLab Token</div>
+          <div className="text-xs text-muted">私有 GitLab 源访问凭据</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_144px] gap-3">
+        <label className="grid gap-1.5">
+          <span className="text-xs text-muted">Host</span>
+          <Input aria-label="GitLab Host" placeholder="gitlab.corp.youdao.com" value={host} onChange={(event) => onHostChange(event.target.value)} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-xs text-muted">Token</span>
+          <Input
+            aria-label="GitLab Token"
+            type="password"
+            placeholder="Personal access token"
+            value={token}
+            onChange={(event) => onTokenChange(event.target.value)}
+          />
+        </label>
+        <Button variant="primary" className="h-9 self-end" onPress={onSave} isPending={isSaving} isDisabled={busy !== ''}>
           {({ isPending }) => (
             <span className="inline-flex items-center gap-1.5">
               {isPending ? <Spinner color="current" size="sm" /> : <RiSaveLine size={16} />}
@@ -207,52 +281,46 @@ function GitLabTokenRow({
           )}
         </Button>
       </div>
+
       {hosts.length > 0 && (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-4 grid gap-2 border-t border-border pt-3">
           {hosts.map((configuredHost) => (
             <div
               key={configuredHost}
-              className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2"
+              className="grid min-w-0 gap-2 rounded-md border border-border bg-surface-secondary px-3 py-2 sm:grid-cols-[88px_minmax(0,1fr)_auto] sm:items-center"
             >
-              <div>
-                <div className="break-all text-xs font-medium text-foreground">{configuredHost}</div>
-                <div className="mt-0.5 text-xs text-muted">已配置</div>
+              <div className="text-xs text-muted">已配置</div>
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="min-w-0 truncate text-sm font-medium text-foreground" title={configuredHost}>
+                  {configuredHost}
+                </span>
+                <span className="shrink-0 rounded-md border border-success/35 bg-success-soft px-2 py-0.5 text-xs font-medium text-success-soft-foreground">
+                  已配置
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onPress={() => onCopy(configuredHost)}
-                  isPending={busy === `copy:${configuredHost}`}
-                  isDisabled={busy !== ''}
-                >
-                  {({ isPending }) => (
-                    <span className="inline-flex items-center gap-1.5">
-                      {isPending ? <Spinner color="current" size="sm" /> : <RiFileCopyLine size={16} />}
-                      复制
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onPress={() => onDelete(configuredHost)}
-                  isPending={busy === configuredHost}
-                  isDisabled={busy !== ''}
-                >
-                  {({ isPending }) => (
-                    <span className="inline-flex items-center gap-1.5">
-                      {isPending ? <Spinner color="current" size="sm" /> : <RiDeleteBinLine size={16} />}
-                      删除
-                    </span>
-                  )}
-                </Button>
+              <div className="flex items-center gap-2 justify-self-start sm:justify-self-end">
+                <IconActionButton
+                  label={`复制 ${configuredHost} token`}
+                  tooltip="复制"
+                  icon={busy === `copy:${configuredHost}` ? 'spinner' : 'copy'}
+                  disabled={busy !== ''}
+                  onClick={() => onCopy(configuredHost)}
+                />
+                <IconActionButton
+                  label={`删除 ${configuredHost} token`}
+                  tooltip="删除"
+                  icon={busy === configuredHost ? 'spinner' : 'delete'}
+                  tone="danger"
+                  disabled={busy !== ''}
+                  onClick={() => onDelete(configuredHost)}
+                />
               </div>
             </div>
           ))}
         </div>
       )}
-      {message && <div className="mt-3 rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted">{message}</div>}
+
+      {message && <div className="mt-3 rounded-md border border-border bg-surface-secondary px-3 py-2 text-xs leading-5 text-muted">{message}</div>}
     </div>
   )
 }
@@ -276,37 +344,174 @@ function UpdateRow({
   const message = getUpdateMessage(status)
 
   return (
-    <div className="rounded-lg border border-border bg-surface-secondary p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">关于与更新</div>
-          <div className="mt-1 text-xs text-muted">当前版本 v{version ?? '-'}</div>
-          {status?.update && <div className="mt-1 text-xs text-muted">最新版本 v{status.update.version}</div>}
-          {message && <div className={`mt-2 text-xs ${isError ? 'text-danger-soft-foreground' : 'text-muted'}`}>{message}</div>}
+    <div className="rounded-lg border border-border bg-surface p-4 shadow-surface">
+      <div className="flex h-full flex-col justify-between gap-4">
+        <div className="flex items-start gap-2.5">
+          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-accent/35 bg-accent-soft text-accent-soft-foreground">
+            <RiRestartLine size={18} />
+          </span>
+          <div>
+            <div className="text-sm font-semibold text-foreground">关于与更新</div>
+            <div className="mt-0.5 text-xs text-muted">当前版本 v{version ?? '-'}</div>
+            {status?.update && <div className="mt-0.5 text-xs text-muted">最新版本 v{status.update.version}</div>}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="secondary" onPress={onCheck} isDisabled={isBusy} isPending={busy === 'check'}>
-            {({ isPending }) => (
-              <span className="inline-flex items-center gap-1.5">
-                {isPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
-                检查更新
-              </span>
-            )}
-          </Button>
-          {hasUpdate && (
-            <Button size="sm" variant="primary" onPress={onOpenReleasePage} isDisabled={isBusy} isPending={busy === 'release'}>
+
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="grid gap-2 sm:grid-cols-[4rem_auto] sm:items-center">
+            <span className="text-xs text-muted">更新状态</span>
+            <span
+              className={cn(
+                'inline-flex h-7 w-fit items-center rounded-md border px-3 text-xs',
+                isError
+                  ? 'border-danger/30 bg-danger-soft text-danger-soft-foreground'
+                  : hasUpdate
+                    ? 'border-warning/35 bg-warning-soft text-warning-soft-foreground'
+                    : 'border-border bg-surface-secondary text-muted'
+              )}
+            >
+              {getUpdateStatusLabel(status)}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" className="h-9 min-w-32" onPress={onCheck} isDisabled={isBusy} isPending={busy === 'check'}>
               {({ isPending }) => (
                 <span className="inline-flex items-center gap-1.5">
-                  {isPending ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={16} />}
-                  打开下载页
+                  {isPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
+                  检查更新
                 </span>
               )}
             </Button>
-          )}
+            {hasUpdate && (
+              <Button size="sm" variant="primary" className="h-9" onPress={onOpenReleasePage} isDisabled={isBusy} isPending={busy === 'release'}>
+                {({ isPending }) => (
+                  <span className="inline-flex items-center gap-1.5">
+                    {isPending ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={16} />}
+                    打开下载页
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
+
+        {message && <div className={cn('text-xs leading-5', isError ? 'text-danger-soft-foreground' : 'text-muted')}>{message}</div>}
       </div>
     </div>
   )
+}
+
+function LocalFoldersCard({
+  appDataPath,
+  agents,
+  onOpenAppData,
+  onOpenAgent
+}: {
+  appDataPath: string
+  agents: Array<{ id: AgentId; label: string; skillsPath: string }>
+  onOpenAppData: () => void
+  onOpenAgent: (agentId: AgentId) => void
+}): React.JSX.Element {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4 shadow-surface">
+      <div className="flex items-start gap-2.5">
+        <RiFolderLine size={20} className="mt-0.5 shrink-0 text-accent" />
+        <div>
+          <div className="text-base font-semibold leading-6 text-foreground">本地目录</div>
+          <div className="text-xs text-muted">应用数据与 Agent Skills 目录</div>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-hidden">
+        <LocalFolderRow label="应用数据目录" value={appDataPath} tag="app-data" onOpen={onOpenAppData} />
+        {agents.map((agent) => (
+          <LocalFolderRow
+            key={agent.id}
+            label={`${agent.label} Skills 目录`}
+            value={agent.skillsPath}
+            tag="agent"
+            onOpen={() => onOpenAgent(agent.id)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function LocalFolderRow({ label, value, tag, onOpen }: { label: string; value: string; tag: string; onOpen: () => void }): React.JSX.Element {
+  return (
+    <div className="grid min-w-0 gap-2.5 border-b border-border py-2.5 last:border-b-0 md:grid-cols-[minmax(0,1fr)_76px_136px] md:items-center">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-foreground">{label}</div>
+        <div className="mt-0.5 min-w-0 truncate font-mono text-xs text-muted" title={value}>
+          {value}
+        </div>
+      </div>
+      <span className="inline-flex h-6 w-fit items-center rounded-md border border-border bg-surface-secondary px-2.5 text-xs font-medium text-muted md:justify-self-end">
+        {tag}
+      </span>
+      <Button variant="secondary" className="h-9 justify-self-start md:justify-self-end" onPress={onOpen}>
+        <span className="inline-flex items-center gap-2">
+          <RiFolderOpenLine size={17} />
+          打开文件夹
+        </span>
+      </Button>
+    </div>
+  )
+}
+
+function IconActionButton({
+  label,
+  tooltip,
+  icon,
+  tone = 'default',
+  disabled,
+  onClick
+}: {
+  label: string
+  tooltip: string
+  icon: 'copy' | 'delete' | 'spinner'
+  tone?: 'default' | 'danger'
+  disabled: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  return (
+    <Tooltip>
+      <Tooltip.Trigger className="inline-flex">
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            'inline-flex size-7 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            tone === 'danger'
+              ? 'border-danger/35 bg-danger-soft text-danger-soft-foreground hover:border-danger/60'
+              : 'border-border bg-surface text-muted hover:bg-surface-hover hover:text-foreground'
+          )}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          {icon === 'spinner' ? (
+            <Spinner color="current" size="sm" />
+          ) : icon === 'copy' ? (
+            <RiFileCopyLine size={15} />
+          ) : (
+            <RiDeleteBinLine size={15} />
+          )}
+        </button>
+      </Tooltip.Trigger>
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+function getUpdateStatusLabel(status: AppUpdateStatus | null): string {
+  if (!status) return '未检查'
+  if (status.status === 'checking') return '检查中'
+  if (status.status === 'available') return '可更新'
+  if (status.status === 'not-available') return '已是最新'
+  if (status.status === 'error') return '检查失败'
+  return '未检查'
 }
 
 function getUpdateMessage(status: AppUpdateStatus | null): string {
@@ -315,21 +520,4 @@ function getUpdateMessage(status: AppUpdateStatus | null): string {
   if (status.status === 'checking') return '正在检查更新...'
   if (status.status === 'available') return '发现新版本，请前往 Releases 页面下载对应系统的安装包手动安装。'
   return ''
-}
-
-function PathRow({ label, value, onOpen }: { label: string; value: string; onOpen: () => void }): React.JSX.Element {
-  return (
-    <div className="rounded-lg border border-border bg-surface-secondary p-4">
-      <div className="text-sm font-medium text-foreground">{label}</div>
-      <button
-        type="button"
-        className="mt-1 flex min-w-0 items-center gap-1.5 rounded-md text-xs text-muted transition hover:text-foreground"
-        aria-label={`打开${label}`}
-        onClick={onOpen}
-      >
-        <RiFolderLine size={14} className="shrink-0" />
-        <span className="min-w-0 break-all text-left">{value}</span>
-      </button>
-    </div>
-  )
 }
