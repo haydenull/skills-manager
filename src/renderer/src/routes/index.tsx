@@ -1,11 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Chip, Spinner, Table, Tooltip } from '@heroui/react'
+import { Button, Chip, Spinner, Switch, Tooltip } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
+import { useState } from 'react'
 import {
+  RiBookOpenLine,
   RiClaudeLine,
-  RiBugLine,
   RiDeleteBinLine,
+  RiExternalLinkLine,
+  RiFileCopyLine,
   RiFolderLine,
   RiFolderOpenLine,
   RiGithubLine,
@@ -15,10 +18,11 @@ import {
   RiPlayLine,
   RiRefreshLine,
   RiRobotLine,
-  RiStopLine,
-  RiTerminalBoxLine
+  RiSearchLine,
+  RiStopLine
 } from '@remixicon/react'
 import type { AgentId, InstalledSkill, OperationResult } from '../../../shared/skills-types'
+import { type SourceFilter, useHomeSidebar } from '../home-sidebar-context'
 import { cn } from '../lib/cn'
 import { skillsQueryKeys, skillsQueryOptions } from '../skills-queries'
 
@@ -27,11 +31,17 @@ export const Route = createFileRoute('/')({
 })
 
 const AGENT_OPTIONS = [
-  { id: 'claude-code', label: 'Claude Code', icon: RiClaudeLine },
-  { id: 'codex', label: 'Codex', icon: RiOpenaiLine }
-] satisfies Array<{ id: AgentId; label: string; icon: typeof RiRobotLine }>
+  { id: 'claude-code', label: 'Claude Code', shortLabel: 'Claude', icon: RiClaudeLine },
+  { id: 'codex', label: 'Codex', shortLabel: 'Codex', icon: RiOpenaiLine }
+] satisfies Array<{ id: AgentId; label: string; shortLabel: string; icon: typeof RiRobotLine }>
 
-const REFRESH_SKILLS_LABEL = '正在刷新 Skill'
+type SkillStatusFilter = 'all' | 'updates' | 'debug'
+
+const STATUS_FILTERS = [
+  { id: 'all', label: '全部' },
+  { id: 'updates', label: '可更新' },
+  { id: 'debug', label: '调试中' }
+] satisfies Array<{ id: SkillStatusFilter; label: string }>
 
 type OperationMutationVariables = {
   label: string
@@ -42,27 +52,58 @@ type OperationMutationVariables = {
 
 function DashboardPage(): React.JSX.Element {
   const queryClient = useQueryClient()
+  const { sourceFilter } = useHomeSidebar()
+  const [statusFilter, setStatusFilter] = useState<SkillStatusFilter>('all')
+  const [search, setSearch] = useState('')
+  const [selectedSkillName, setSelectedSkillName] = useState<string | null>(null)
 
-  const { data: installedSkills = [], refetch: refetchInstalledSkills } = useQuery(skillsQueryOptions.installed())
+  const { data: installedSkills = [], isLoading, refetch: refetchInstalledSkills } = useQuery(skillsQueryOptions.installed())
   const installedSkillNames = installedSkills.map((skill) => skill.name)
   const { data: updateStatuses = [] } = useQuery({
     ...skillsQueryOptions.updates(installedSkillNames),
     enabled: installedSkillNames.length > 0
   })
-  const skillsWithUpdates = updateStatuses.filter((status) => status.hasUpdate).map((status) => status.name)
-  const updateErrors = updateStatuses.flatMap((status) => (status.error ? [status.error] : []))
+  const skillsWithUpdates = new Set(updateStatuses.filter((status) => status.hasUpdate).map((status) => status.name))
+  const sourceFilteredSkills = installedSkills.filter((skill) => sourceFilter === 'all' || skill.provider === sourceFilter)
+  const statusCounts = {
+    all: sourceFilteredSkills.length,
+    updates: sourceFilteredSkills.filter((skill) => skillsWithUpdates.has(skill.name)).length,
+    debug: sourceFilteredSkills.filter((skill) => skill.debugPath).length
+  }
+  const query = search.trim().toLowerCase()
+  const filteredSkills = sourceFilteredSkills.filter((skill) => {
+    if (statusFilter === 'updates' && !skillsWithUpdates.has(skill.name)) return false
+    if (statusFilter === 'debug' && !skill.debugPath) return false
+    if (query === '') return true
+
+    return `${skill.name} ${skill.description} ${skill.source ?? ''}`.toLowerCase().includes(query)
+  })
+  const selectedSkill = filteredSkills.find((skill) => skill.name === selectedSkillName) ?? filteredSkills[0] ?? null
 
   const operationMutation = useMutation({
     mutationFn: async ({ action, invalidateUpdates }: OperationMutationVariables) => {
       const result = await action()
       await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
       if (invalidateUpdates) await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.updatesRoot })
+      return result
+    },
+    onSuccess: (result, variables) => {
       if (result && !result.ok) {
         toast.danger('操作失败', {
           description: result.logs.slice(0, 3).join('\n') || '请稍后重试。'
         })
+        return
       }
-      return result
+      if (variables.showDefaultResult) {
+        toast.success('操作完成', {
+          description: result?.logs.slice(0, 3).join('\n') || undefined
+        })
+      }
+    },
+    onError: (error) => {
+      toast.danger('操作失败', {
+        description: error instanceof Error ? error.message : String(error)
+      })
     }
   })
 
@@ -72,6 +113,20 @@ function DashboardPage(): React.JSX.Element {
       const names = installedResult.data?.map((skill) => skill.name) ?? []
       const statuses = names.length > 0 ? await queryClient.fetchQuery(skillsQueryOptions.updates(names)) : []
       return statuses.flatMap((status) => (status.error ? [status.error] : []))
+    },
+    onSuccess: (errors) => {
+      if (errors.length > 0) {
+        toast.danger('检查更新失败', {
+          description: errors.slice(0, 3).join('\n')
+        })
+      } else {
+        toast.success('检查完成')
+      }
+    },
+    onError: (error) => {
+      toast.danger('检查更新失败', {
+        description: error instanceof Error ? error.message : String(error)
+      })
     }
   })
 
@@ -101,6 +156,14 @@ function DashboardPage(): React.JSX.Element {
     )
   }
 
+  function toggleAgent(skill: InstalledSkill, agent: AgentId): void {
+    if (skill.agents.includes(agent)) {
+      removeAgent(skill, agent)
+    } else {
+      addAgent(skill, agent)
+    }
+  }
+
   function removeAll(skill: InstalledSkill): void {
     run(`正在完全删除 ${skill.name}`, () =>
       window.api.skills.remove({
@@ -126,268 +189,475 @@ function DashboardPage(): React.JSX.Element {
     run(`正在打开 ${skill.name} ${skill.debugPath ? '调试' : '正式'}文件夹`, () => window.api.skills.openStorageFolder(skill.name), false, false)
   }
 
+  async function copyValue(label: string, value: string): Promise<void> {
+    await navigator.clipboard.writeText(value)
+    toast.success(`已复制${label}`)
+  }
+
   const busy = operationMutation.isPending || refreshMutation.isPending
-  const busyLabel = operationMutation.isPending ? operationMutation.variables.label : refreshMutation.isPending ? REFRESH_SKILLS_LABEL : null
   const isRefreshing = refreshMutation.isPending
-  const displayedLogs = (() => {
-    const operationIsLatest = operationMutation.submittedAt > 0 && operationMutation.submittedAt >= refreshMutation.submittedAt
-    const refreshIsLatest = refreshMutation.submittedAt > 0 && refreshMutation.submittedAt > operationMutation.submittedAt
-
-    if (operationIsLatest) {
-      if (operationMutation.isPending) {
-        return [`${operationMutation.variables.label}...`]
-      }
-      if (operationMutation.isError) {
-        return [operationMutation.error instanceof Error ? operationMutation.error.message : String(operationMutation.error)]
-      }
-      if (operationMutation.isSuccess && operationMutation.data) {
-        if (operationMutation.data.logs.length > 0) return operationMutation.data.logs
-        if (operationMutation.variables.showDefaultResult) return [operationMutation.data.ok ? '完成。' : '失败。']
-      }
-    }
-
-    if (refreshIsLatest) {
-      if (refreshMutation.isPending) return [`${REFRESH_SKILLS_LABEL}...`]
-      if (refreshMutation.isError) return [refreshMutation.error instanceof Error ? refreshMutation.error.message : String(refreshMutation.error)]
-      if (refreshMutation.isSuccess) return refreshMutation.data.length > 0 ? refreshMutation.data : ['刷新完成。']
-    }
-
-    return updateErrors
-  })()
 
   return (
-    <section className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div>
-            <h2 className="text-base font-medium">已安装 Skill</h2>
-            <p className="mt-1 text-xs text-muted">此应用管理的 Skill，共 {installedSkills.length} 个</p>
+    <section className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] overflow-hidden bg-background">
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden px-4 py-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5">
+          <div className="flex rounded-md border border-border bg-surface p-0.5 shadow-surface">
+            {STATUS_FILTERS.map((item) => {
+              const isActive = statusFilter === item.id
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    'flex h-8 items-center gap-1.5 rounded-md px-3.5 text-sm font-medium transition-colors',
+                    isActive ? 'bg-accent text-accent-foreground shadow-surface' : 'text-muted hover:bg-surface-hover hover:text-foreground'
+                  )}
+                  onClick={() => setStatusFilter(item.id)}
+                >
+                  <span>{item.label}</span>
+                  {item.id !== 'all' && (
+                    <span
+                      className={cn(
+                        'min-w-5 rounded-full px-1.5 py-0.5 text-xs',
+                        isActive ? 'bg-accent-foreground/20 text-accent-foreground' : 'bg-warning-soft text-warning-soft-foreground'
+                      )}
+                    >
+                      {statusCounts[item.id]}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {busy && !isRefreshing && (
-              <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground">
-                <Spinner size="sm" />
-                <span>{busyLabel}</span>
-              </div>
-            )}
-            <Button size="sm" variant="secondary" onPress={() => void refreshSkillsWithFeedback()} isDisabled={busy} isPending={isRefreshing}>
+
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+            <label className="flex h-9 min-w-52 max-w-68 flex-1 items-center gap-2 rounded-md border border-border bg-surface px-3 text-muted shadow-surface transition-colors focus-within:border-accent">
+              <RiSearchLine size={17} className="shrink-0" />
+              <input
+                aria-label="搜索 Skill"
+                className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+                placeholder="搜索 Skill"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+
+            <Button variant="secondary" className="h-9" onPress={() => void refreshSkillsWithFeedback()} isDisabled={busy} isPending={isRefreshing}>
               {({ isPending }) => (
                 <span className="inline-flex items-center gap-1.5">
                   {isPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
-                  刷新
+                  检查更新
                 </span>
               )}
             </Button>
           </div>
         </div>
 
-        <Table variant="secondary" className="px-4">
-          <Table.Content className="w-full table-fixed">
-            <Table.Header>
-              <Table.Column className="w-40" isRowHeader>
-                名称
-              </Table.Column>
-              <Table.Column>描述</Table.Column>
-              <Table.Column className="w-24">Agent</Table.Column>
-              <Table.Column className="w-40">来源</Table.Column>
-              <Table.Column className="w-40">安装时间</Table.Column>
-              <Table.Column className="w-52">操作</Table.Column>
-            </Table.Header>
-            <Table.Body
-              renderEmptyState={() => (
-                <div className="flex flex-col items-center gap-3 px-4 py-12 text-center text-muted">
-                  <RiInboxLine size={28} />
-                  <span>还没有通过此应用安装的 Skill。</span>
-                </div>
-              )}
-            >
-              {installedSkills.map((skill) => (
-                <Table.Row key={skill.name} id={skill.name}>
-                  <Table.Cell className="font-medium text-foreground">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Tooltip>
-                        <Tooltip.Trigger className="block min-w-0 truncate text-left">{skill.name}</Tooltip.Trigger>
-                        <Tooltip.Content>{skill.name}</Tooltip.Content>
-                      </Tooltip>
-                      {skillsWithUpdates.includes(skill.name) && (
-                        <Chip size="sm" color="accent" variant="soft">
-                          可更新
-                        </Chip>
-                      )}
-                      {skill.debugPath && (
-                        <Chip size="sm" color="warning" variant="soft">
-                          调试中
-                        </Chip>
-                      )}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="text-muted">
-                    <Tooltip>
-                      <Tooltip.Trigger className="block min-w-0 truncate text-left">{skill.description}</Tooltip.Trigger>
-                      <Tooltip.Content className="max-w-md">{skill.description}</Tooltip.Content>
-                    </Tooltip>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex flex-nowrap gap-2">
-                      {AGENT_OPTIONS.map((agent) => {
-                        const Icon = agent.icon
-                        const isInstalled = skill.agents.includes(agent.id)
-                        const label = isInstalled ? `从 ${agent.label} 移除 ${skill.name}` : `安装 ${skill.name} 到 ${agent.label}`
+        <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-surface">
+          <div className="hidden shrink-0 grid-cols-[minmax(0,1fr)_132px_96px] border-b border-border px-4 py-2.5 text-sm text-muted min-[1180px]:grid">
+            <div>Skill</div>
+            <div>Agent</div>
+            <div>状态</div>
+          </div>
 
-                        return (
-                          <Tooltip key={agent.id}>
-                            <Tooltip.Trigger className="inline-flex">
-                              <button
-                                type="button"
-                                aria-label={label}
-                                className={cn(
-                                  'inline-flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                                  isInstalled
-                                    ? 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
-                                    : 'border-border bg-surface text-muted hover:border-border-secondary hover:bg-surface-hover hover:text-foreground'
-                                )}
-                                onClick={() => void (isInstalled ? removeAgent(skill, agent.id) : addAgent(skill, agent.id))}
-                                disabled={busy}
-                              >
-                                <Icon size={18} />
-                              </button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Content>{label}</Tooltip.Content>
-                          </Tooltip>
-                        )
-                      })}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="text-muted">
-                    <div className="space-y-1">
-                      {skill.source ? (
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          {skill.provider === 'local' ? (
-                            <RiFolderLine size={16} className="shrink-0" />
-                          ) : skill.provider === 'gitlab' ? (
-                            <RiGitlabLine size={16} className="shrink-0" />
-                          ) : (
-                            <RiGithubLine size={16} className="shrink-0" />
-                          )}
-                          <Tooltip>
-                            <Tooltip.Trigger className="block min-w-0 truncate text-left">{getRepositoryName(skill.source)}</Tooltip.Trigger>
-                            <Tooltip.Content className="max-w-md break-all font-mono text-xs">{skill.source}</Tooltip.Content>
-                          </Tooltip>
-                        </div>
-                      ) : (
-                        '-'
-                      )}
-                      {skill.debugPath && (
-                        <div className="flex min-w-0 items-center gap-1.5 text-xs text-warning-soft-foreground">
-                          <RiBugLine size={14} className="shrink-0" />
-                          <Tooltip>
-                            <Tooltip.Trigger className="block min-w-0 truncate text-left">{getRepositoryName(skill.debugPath)}</Tooltip.Trigger>
-                            <Tooltip.Content className="max-w-md break-all font-mono text-xs">{skill.debugPath}</Tooltip.Content>
-                          </Tooltip>
-                        </div>
-                      )}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="whitespace-nowrap text-xs text-muted">
-                    {skill.installedAt ? new Date(skill.installedAt).toLocaleString() : '-'}
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex flex-nowrap gap-2">
-                      <Tooltip>
-                        <Tooltip.Trigger className="inline-flex">
-                          <button
-                            type="button"
-                            aria-label={`打开 ${skill.name} ${skill.debugPath ? '调试' : '正式'}文件夹`}
-                            className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors hover:border-border-secondary hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => void openStorageFolder(skill)}
-                            disabled={busy}
-                          >
-                            <RiFolderOpenLine size={16} />
-                          </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Content>{`打开 ${skill.name} ${skill.debugPath ? '调试' : '正式'}文件夹`}</Tooltip.Content>
-                      </Tooltip>
-                      {skill.debugPath ? (
-                        <Tooltip>
-                          <Tooltip.Trigger className="inline-flex">
-                            <button
-                              type="button"
-                              aria-label={`退出 ${skill.name} 调试`}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-warning/40 bg-warning-soft text-warning-soft-foreground transition-colors hover:border-warning disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => void stopDebug(skill)}
-                              disabled={busy || skill.agents.length === 0}
-                            >
-                              <RiStopLine size={16} />
-                            </button>
-                          </Tooltip.Trigger>
-                          <Tooltip.Content>{`退出 ${skill.name} 调试`}</Tooltip.Content>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip>
-                          <Tooltip.Trigger className="inline-flex">
-                            <button
-                              type="button"
-                              aria-label={`调试 ${skill.name}`}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-surface text-muted transition-colors hover:border-border-secondary hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => void startDebug(skill)}
-                              disabled={busy || skill.agents.length === 0}
-                            >
-                              <RiPlayLine size={16} />
-                            </button>
-                          </Tooltip.Trigger>
-                          <Tooltip.Content>{`选择目录并调试 ${skill.name}`}</Tooltip.Content>
-                        </Tooltip>
-                      )}
-                      <Tooltip>
-                        <Tooltip.Trigger className="inline-flex">
-                          <button
-                            type="button"
-                            aria-label={`删除 ${skill.name}`}
-                            className="inline-flex size-8 items-center justify-center rounded-md border border-danger/30 bg-danger-soft text-danger-soft-foreground transition-colors hover:border-danger/50 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => void removeAll(skill)}
-                            disabled={busy}
-                          >
-                            <RiDeleteBinLine size={16} />
-                          </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Content>{`删除 ${skill.name}`}</Tooltip.Content>
-                      </Tooltip>
-                      {skillsWithUpdates.includes(skill.name) && (
-                        <Tooltip>
-                          <Tooltip.Trigger className="inline-flex">
-                            <button
-                              type="button"
-                              aria-label={`更新 ${skill.name}`}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-accent/50 bg-accent-soft text-accent-soft-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => void updateSkill(skill)}
-                              disabled={busy}
-                            >
-                              <RiRefreshLine size={16} />
-                            </button>
-                          </Tooltip.Trigger>
-                          <Tooltip.Content>{`更新 ${skill.name}`}</Tooltip.Content>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
+          {isLoading ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center text-muted">
+              <Spinner size="sm" />
+            </div>
+          ) : filteredSkills.length > 0 ? (
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+              {filteredSkills.map((skill) => (
+                <SkillListRow
+                  key={skill.name}
+                  skill={skill}
+                  hasUpdate={skillsWithUpdates.has(skill.name)}
+                  isSelected={selectedSkill?.name === skill.name}
+                  onSelect={() => setSelectedSkillName(skill.name)}
+                />
               ))}
-            </Table.Body>
-          </Table.Content>
-        </Table>
+            </div>
+          ) : (
+            <EmptySkillList />
+          )}
+        </div>
       </div>
 
-      <aside className="rounded-lg border border-border bg-surface p-4 shadow-surface">
-        <div className="flex items-center gap-2">
-          <RiTerminalBoxLine size={18} className="text-accent" />
-          <h2 className="text-base font-medium">操作日志</h2>
-        </div>
-        <div className="mt-3 min-h-32 rounded-md border border-border bg-surface-secondary p-3 font-mono text-xs leading-5 text-muted">
-          {displayedLogs.length > 0 ? displayedLogs.map((line, index) => <div key={`${line}-${index}`}>{line}</div>) : '暂无操作记录。'}
-        </div>
-      </aside>
+      <SkillInspector
+        skill={selectedSkill}
+        hasUpdate={selectedSkill ? skillsWithUpdates.has(selectedSkill.name) : false}
+        busy={busy}
+        onToggleAgent={toggleAgent}
+        onOpenFolder={openStorageFolder}
+        onUpdate={updateSkill}
+        onStartDebug={startDebug}
+        onStopDebug={stopDebug}
+        onRemove={removeAll}
+        onCopy={copyValue}
+      />
     </section>
   )
+}
+
+function SkillListRow({
+  skill,
+  hasUpdate,
+  isSelected,
+  onSelect
+}: {
+  skill: InstalledSkill
+  hasUpdate: boolean
+  isSelected: boolean
+  onSelect: () => void
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'grid w-full gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 min-[1180px]:grid-cols-[minmax(0,1fr)_132px_96px] min-[1180px]:items-center',
+        isSelected ? 'border-accent/50 bg-accent-soft/70 ring-1 ring-inset ring-accent/50' : 'hover:bg-surface-hover'
+      )}
+      onClick={onSelect}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <SourceIcon provider={skill.provider} />
+        <div className="min-w-0">
+          <div className="truncate text-base font-semibold text-foreground">{skill.name}</div>
+          <div className="mt-1 truncate text-sm text-muted">{skill.description}</div>
+        </div>
+      </div>
+
+      <AgentBadges agents={skill.agents} />
+      <SkillStatusBadges hasUpdate={hasUpdate} isDebugging={Boolean(skill.debugPath)} />
+    </button>
+  )
+}
+
+function AgentBadges({ agents }: { agents: AgentId[] }): React.JSX.Element {
+  const installedAgents = AGENT_OPTIONS.filter((agent) => agents.includes(agent.id))
+
+  if (installedAgents.length === 0) {
+    return <div className="text-xs text-muted min-[1180px]:justify-self-start">—</div>
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5 min-[1180px]:justify-self-start">
+      {installedAgents.map((agent) => (
+        <span
+          key={agent.id}
+          className={cn(
+            'rounded-md border px-2 py-0.5 text-xs font-medium',
+            agent.id === 'codex'
+              ? 'border-success/40 bg-success-soft text-success-soft-foreground'
+              : 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
+          )}
+        >
+          {agent.shortLabel}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function SkillStatusBadges({ hasUpdate, isDebugging }: { hasUpdate: boolean; isDebugging: boolean }): React.JSX.Element {
+  if (!hasUpdate && !isDebugging) return <div className="text-xs text-muted min-[1180px]:justify-self-start">—</div>
+
+  return (
+    <div className="flex flex-wrap gap-1.5 min-[1180px]:justify-self-start">
+      {hasUpdate && (
+        <Chip size="sm" color="warning" variant="soft">
+          可更新
+        </Chip>
+      )}
+      {isDebugging && (
+        <Chip size="sm" color="warning" variant="soft">
+          调试中
+        </Chip>
+      )}
+    </div>
+  )
+}
+
+function SkillInspector({
+  skill,
+  hasUpdate,
+  busy,
+  onToggleAgent,
+  onOpenFolder,
+  onUpdate,
+  onStartDebug,
+  onStopDebug,
+  onRemove,
+  onCopy
+}: {
+  skill: InstalledSkill | null
+  hasUpdate: boolean
+  busy: boolean
+  onToggleAgent: (skill: InstalledSkill, agent: AgentId) => void
+  onOpenFolder: (skill: InstalledSkill) => void
+  onUpdate: (skill: InstalledSkill) => void
+  onStartDebug: (skill: InstalledSkill) => void
+  onStopDebug: (skill: InstalledSkill) => void
+  onRemove: (skill: InstalledSkill) => void
+  onCopy: (label: string, value: string) => Promise<void>
+}): React.JSX.Element {
+  if (!skill) {
+    return (
+      <aside className="flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden border-l border-border bg-surface/80 px-5 py-6">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted">
+          <RiInboxLine size={28} />
+          <span>没有匹配的 Skill。</span>
+        </div>
+      </aside>
+    )
+  }
+
+  const displayedPath = skill.debugPath || skill.storagePath
+  const displayedPathLabel = skill.debugPath ? '调试路径' : '本地路径'
+
+  return (
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-surface/80">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6">
+        <div>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <SourceIcon provider={skill.provider} size="lg" />
+            <h2 className="min-w-0 truncate text-xl font-semibold text-foreground">{skill.name}</h2>
+          </div>
+          <p className="mt-2 break-words text-sm leading-5 text-muted">{skill.description}</p>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {skill.debugPath && (
+              <Chip size="sm" color="warning" variant="soft">
+                调试中
+              </Chip>
+            )}
+            {hasUpdate && (
+              <Chip size="sm" color="warning" variant="soft">
+                可更新
+              </Chip>
+            )}
+          </div>
+        </div>
+
+        <InspectorSection title="基础信息">
+          <DetailRow label="来源" value={getProviderLabel(skill.provider)} />
+          <DetailRow label="仓库" value={skill.source ? getRepositoryName(skill.source) : '-'} href={getRepositoryUrl(skill)} />
+          <DetailRow
+            label={displayedPathLabel}
+            value={shortenPath(displayedPath)}
+            titleValue={displayedPath}
+            onOpen={() => onOpenFolder(skill)}
+            isActionDisabled={busy}
+            isMono
+          />
+          <DetailRow label="锁定版本" value={formatSha(skill.folderSha)} copyValue={skill.folderSha ?? undefined} onCopy={onCopy} isMono />
+          <DetailRow label="安装时间" value={formatDate(skill.installedAt)} />
+        </InspectorSection>
+
+        <InspectorSection title="Agent 安装">
+          <div className="overflow-hidden rounded-lg border border-border">
+            {AGENT_OPTIONS.map((agent) => (
+              <div key={agent.id} className="flex h-10 items-center justify-between gap-3 border-b border-border px-3 last:border-b-0">
+                <span className="text-sm text-foreground">{agent.label}</span>
+                <Switch
+                  aria-label={`${agent.label} 安装状态`}
+                  isSelected={skill.agents.includes(agent.id)}
+                  isDisabled={busy}
+                  onChange={() => onToggleAgent(skill, agent.id)}
+                >
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch>
+              </div>
+            ))}
+          </div>
+        </InspectorSection>
+      </div>
+
+      <div className="shrink-0 border-t border-border bg-surface/95 px-4 py-3">
+        <h3 className="text-xs font-semibold text-foreground">操作</h3>
+        <div className={cn('mt-3 grid gap-2', hasUpdate ? 'grid-cols-3' : 'grid-cols-2')}>
+          {hasUpdate && (
+            <Button variant="outline" className="h-9 w-full rounded-md" onPress={() => onUpdate(skill)} isDisabled={busy}>
+              <span className="inline-flex w-full items-center justify-center gap-1.5">
+                <RiRefreshLine size={16} />
+                更新
+              </span>
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            className="h-9 w-full rounded-md"
+            onPress={() => (skill.debugPath ? onStopDebug(skill) : onStartDebug(skill))}
+            isDisabled={busy || skill.agents.length === 0}
+          >
+            <span className="inline-flex w-full items-center justify-center gap-1.5">
+              {skill.debugPath ? <RiStopLine size={16} /> : <RiPlayLine size={16} />}
+              {skill.debugPath ? '退出' : '调试'}
+            </span>
+          </Button>
+          <button
+            type="button"
+            className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-danger/35 bg-transparent px-3 text-sm font-medium text-danger-soft-foreground/90 transition-colors hover:border-danger/60 hover:bg-danger-soft/20 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => onRemove(skill)}
+            disabled={busy}
+          >
+            <RiDeleteBinLine size={16} />
+            删除
+          </button>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+function InspectorSection({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <section className="mt-5 border-t border-border pt-4">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <div className="mt-2.5">{children}</div>
+    </section>
+  )
+}
+
+function DetailRow({
+  label,
+  value,
+  copyValue,
+  titleValue,
+  href,
+  isMono,
+  onCopy,
+  onOpen,
+  isActionDisabled
+}: {
+  label: string
+  value: string
+  copyValue?: string
+  titleValue?: string
+  href?: string
+  isMono?: boolean
+  onCopy?: (label: string, value: string) => Promise<void>
+  onOpen?: () => void
+  isActionDisabled?: boolean
+}): React.JSX.Element {
+  return (
+    <div className="flex min-h-9 items-center justify-between gap-3 border-b border-border py-1.5 last:border-b-0">
+      <span className="shrink-0 text-sm text-muted">{label}</span>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className={cn(
+            'grid w-52 shrink-0 grid-cols-[minmax(0,1fr)_1.5rem] items-center gap-2 text-accent transition-colors hover:text-accent-soft-foreground',
+            isMono && 'font-mono'
+          )}
+          title={href}
+        >
+          <span className={cn('min-w-0 truncate text-left text-sm font-medium leading-6', isMono && 'text-xs')}>{value}</span>
+          <span className="inline-flex size-6 items-center justify-center">
+            <RiExternalLinkLine size={15} />
+          </span>
+        </a>
+      ) : (
+        <div className="grid w-52 shrink-0 grid-cols-[minmax(0,1fr)_1.5rem] items-center gap-2">
+          <span
+            className={cn('min-w-0 truncate text-left text-sm leading-6 text-foreground', isMono && 'font-mono text-xs')}
+            title={titleValue ?? copyValue ?? value}
+          >
+            {value}
+          </span>
+          {onOpen ? (
+            <Tooltip>
+              <Tooltip.Trigger className="inline-flex">
+                <button
+                  type="button"
+                  aria-label={`打开${label}`}
+                  className="inline-flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={onOpen}
+                  disabled={isActionDisabled}
+                >
+                  <RiFolderOpenLine size={15} />
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Content>打开{label}</Tooltip.Content>
+            </Tooltip>
+          ) : copyValue && onCopy ? (
+            <Tooltip>
+              <Tooltip.Trigger className="inline-flex">
+                <button
+                  type="button"
+                  aria-label={`复制${label}`}
+                  className="inline-flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+                  onClick={() => void onCopy(label, copyValue)}
+                >
+                  <RiFileCopyLine size={15} />
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Content>复制{label}</Tooltip.Content>
+            </Tooltip>
+          ) : (
+            <span className="size-6" aria-hidden="true" />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SourceIcon({ provider, size = 'md' }: { provider?: SourceFilter; size?: 'md' | 'lg' }): React.JSX.Element {
+  let Icon = RiBookOpenLine
+  let toneClass = 'border-accent/30 bg-accent-soft text-accent-soft-foreground'
+
+  if (provider === 'local') {
+    Icon = RiFolderLine
+    toneClass = 'border-border bg-surface-secondary text-muted'
+  } else if (provider === 'gitlab') {
+    Icon = RiGitlabLine
+    toneClass = 'border-warning/30 bg-warning-soft text-warning-soft-foreground'
+  } else if (provider === 'github') {
+    Icon = RiGithubLine
+    toneClass = 'border-border bg-surface-secondary text-foreground'
+  }
+
+  return (
+    <span className={cn('inline-flex shrink-0 items-center justify-center rounded-lg border', size === 'lg' ? 'size-10' : 'size-9', toneClass)}>
+      <Icon size={size === 'lg' ? 22 : 19} />
+    </span>
+  )
+}
+
+function EmptySkillList(): React.JSX.Element {
+  return (
+    <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-4 text-center text-muted">
+      <RiInboxLine size={28} />
+      <span>没有匹配的 Skill。</span>
+    </div>
+  )
+}
+
+function getProviderLabel(provider: InstalledSkill['provider']): string {
+  if (provider === 'github') return 'GitHub'
+  if (provider === 'gitlab') return 'GitLab'
+  if (provider === 'local') return '本地'
+  return '未知'
+}
+
+function getRepositoryUrl(skill: InstalledSkill): string | undefined {
+  if (!skill.source) return undefined
+
+  if (skill.provider === 'github') {
+    const source = skill.source.replace(/\.git$/, '')
+    return source.startsWith('http') ? source : `https://github.com/${source}`
+  }
+
+  if (skill.provider === 'gitlab' && skill.source.startsWith('http')) {
+    return skill.source.replace(/\.git$/, '')
+  }
+
+  return undefined
 }
 
 function getRepositoryName(source: string): string {
@@ -398,4 +668,18 @@ function getRepositoryName(source: string): string {
       .split(/[/:\\]/)
       .at(-1) || source
   )
+}
+
+function formatDate(value?: string): string {
+  return value ? new Date(value).toLocaleString() : '-'
+}
+
+function formatSha(value?: string | null): string {
+  if (!value) return '-'
+  return value.length > 18 ? `${value.slice(0, 18)}...` : value
+}
+
+function shortenPath(value: string): string {
+  if (value.length <= 44) return value
+  return `...${value.slice(-41)}`
 }

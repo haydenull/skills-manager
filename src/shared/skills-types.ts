@@ -26,6 +26,7 @@ export type InstalledSkill = {
   agents: AgentId[]
   source?: string
   provider?: 'github' | 'gitlab' | 'local'
+  folderSha?: string | null
   installedAt?: string
   debugPath?: string
 }

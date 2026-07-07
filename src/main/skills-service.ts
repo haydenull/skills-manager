@@ -144,6 +144,7 @@ export class SkillsService {
           agents: skill.agents,
           source: skill.source,
           provider: skill.provider,
+          folderSha: skill.folderSha,
           installedAt: skill.installedAt,
           debugPath: skill.debugPath
         }

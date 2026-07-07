@@ -16,10 +16,16 @@
   box-sizing: border-box;
 }
 
+html,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   min-width: 960px;
   min-height: 100vh;
+  overflow: hidden;
   color: var(--foreground);
   background: var(--background);
 }
