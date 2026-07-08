@@ -255,6 +255,8 @@ jobs:
               desc "Desktop skills manager for Claude Code and Codex"
               homepage "https://github.com/haydenull/skills-manager"
 
+              depends_on macos: ">= :monterey"
+
               app "Skills Manager.app"
             end
           CASK
