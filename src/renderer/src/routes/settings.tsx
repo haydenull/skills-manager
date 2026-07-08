@@ -506,18 +506,27 @@ function IconActionButton({
 }
 
 function getUpdateStatusLabel(status: AppUpdateStatus | null): string {
-  if (!status) return '未检查'
-  if (status.status === 'checking') return '检查中'
-  if (status.status === 'available') return '可更新'
-  if (status.status === 'not-available') return '已是最新'
-  if (status.status === 'error') return '检查失败'
-  return '未检查'
+  switch (status?.status) {
+    case 'checking':
+      return '检查中'
+    case 'available':
+      return '可更新'
+    case 'not-available':
+      return '已是最新'
+    case 'error':
+      return '检查失败'
+    default:
+      return '未检查'
+  }
 }
 
 function getUpdateMessage(status: AppUpdateStatus | null): string {
-  if (!status) return ''
-  if (status.message) return status.message
-  if (status.status === 'checking') return '正在检查更新...'
-  if (status.status === 'available') return '发现新版本，请前往 Releases 页面下载对应系统的安装包手动安装。'
-  return ''
+  switch (status?.status) {
+    case 'available':
+      return status.message ?? '发现新版本，请前往 Releases 页面下载对应系统的安装包手动安装。'
+    case 'error':
+      return status.message ?? ''
+    default:
+      return ''
+  }
 }

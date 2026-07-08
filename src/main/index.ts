@@ -65,8 +65,7 @@ autoUpdater.on('update-available', (info) => {
 autoUpdater.on('update-not-available', () => {
   setAppUpdateStatus({
     status: 'not-available',
-    currentVersion: app.getVersion(),
-    message: '当前已是最新版本'
+    currentVersion: app.getVersion()
   })
 })
 
