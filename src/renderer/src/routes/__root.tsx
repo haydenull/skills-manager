@@ -36,9 +36,9 @@ function RootLayout(): React.JSX.Element {
 
   return (
     <HomeSidebarContext.Provider value={{ sourceFilter, setSourceFilter }}>
-      <main className="h-screen min-h-0 overflow-hidden bg-background text-foreground">
-        <div className="grid h-full min-h-0 grid-cols-[232px_minmax(0,1fr)] overflow-hidden">
-          <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-surface/90 px-3 py-4">
+      <main className="h-screen min-h-0 overflow-clip bg-background text-foreground">
+        <div className="grid h-full min-h-0 grid-cols-[232px_minmax(0,1fr)] overflow-clip">
+          <aside className="flex h-full min-h-0 flex-col overflow-clip border-r border-border bg-surface/90 px-3 py-4">
             <div className="flex items-center gap-3 px-2">
               <img src={appLogo} alt="" className="size-9 rounded-lg shadow-surface" />
               <h1 className="text-base font-semibold tracking-normal">Skills Manager</h1>
@@ -111,7 +111,7 @@ function RootLayout(): React.JSX.Element {
             </div>
           </aside>
 
-          <div className={cn('h-full min-h-0 min-w-0', isHome ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden')}>
+          <div className="h-full min-h-0 min-w-0 overflow-clip">
             <Outlet />
           </div>
         </div>

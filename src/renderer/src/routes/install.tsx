@@ -1,20 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
-import { Button, Card, Checkbox, CheckboxGroup, Chip, Input, Spinner, Switch } from '@heroui/react'
+import { useEffect, useState } from 'react'
+import { Checkbox, CheckboxGroup, Spinner } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
-import {
-  RiCheckLine,
-  RiCheckboxMultipleLine,
-  RiClaudeLine,
-  RiDownloadLine,
-  RiGithubLine,
-  RiInboxLine,
-  RiOpenaiLine,
-  RiRobotLine,
-  RiSearchLine,
-  RiTerminalBoxLine
-} from '@remixicon/react'
+import { RiCheckLine, RiClaudeLine, RiDownloadLine, RiInboxLine, RiOpenaiLine, RiRobotLine, RiSearchLine } from '@remixicon/react'
 import type { AgentId, OperationResult, SkillPreview } from '../../../shared/skills-types'
 import { cn } from '../lib/cn'
 import { skillsQueryKeys } from '../skills-queries'
@@ -28,14 +17,6 @@ const AGENT_OPTIONS = [
   { id: 'codex', label: 'Codex', icon: RiOpenaiLine }
 ] satisfies Array<{ id: AgentId; label: string; icon: typeof RiRobotLine }>
 
-const STEP_ITEMS = [
-  { label: '输入', icon: RiGithubLine },
-  { label: '预览', icon: RiSearchLine },
-  { label: '选择 Skill', icon: RiCheckboxMultipleLine },
-  { label: '选择 Agent', icon: RiRobotLine },
-  { label: '安装', icon: RiDownloadLine }
-]
-
 function InstallPage(): React.JSX.Element {
   const [source, setSource] = useState('')
   const [fullDepth, setFullDepth] = useState(false)
@@ -44,7 +25,7 @@ function InstallPage(): React.JSX.Element {
   const [previews, setPreviews] = useState<SkillPreview[]>([])
   const [selectedPreviews, setSelectedPreviews] = useState<string[]>([])
   const [selectedAgents, setSelectedAgents] = useState<AgentId[]>([])
-  const [logs, setLogs] = useState<string[]>([])
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const installMutation = useMutation({
@@ -57,25 +38,21 @@ function InstallPage(): React.JSX.Element {
     })
   }, [])
 
-  const selectedPreviewItems = useMemo(
-    () => previews.filter((skill) => selectedPreviews.includes(skill.skillPath) && !skill.installState),
-    [previews, selectedPreviews]
-  )
+  const selectedPreviewItems = previews.filter((skill) => selectedPreviews.includes(skill.skillPath) && !skill.installState)
   const trimmedSource = source.trim()
   const hasPreviewedSource = previewedSource === trimmedSource
-  const currentStep = trimmedSource === '' ? 1 : !hasPreviewedSource ? 2 : selectedPreviewItems.length === 0 ? 3 : selectedAgents.length === 0 ? 4 : 5
 
   async function run(label: string, action: () => Promise<OperationResult | void>): Promise<void> {
     setBusyLabel(label)
-    setLogs([`${label}...`])
+    setStatusMessage(`${label}...`)
 
     try {
       const result = await action()
       if (result) {
-        setLogs(result.logs.length > 0 ? result.logs : [result.ok ? '完成。' : '失败。'])
+        setStatusMessage(result.logs[0] ?? (result.ok ? '完成。' : '失败。'))
       }
     } catch (error) {
-      setLogs([error instanceof Error ? error.message : String(error)])
+      setStatusMessage(error instanceof Error ? error.message : String(error))
     } finally {
       setBusyLabel(null)
     }
@@ -139,6 +116,7 @@ function InstallPage(): React.JSX.Element {
     setPreviews([])
     setSelectedPreviews([])
     setSelectedAgents([])
+    setStatusMessage(null)
   }
 
   const busy = busyLabel !== null
@@ -146,174 +124,59 @@ function InstallPage(): React.JSX.Element {
   const isInstalling = busyLabel === '正在安装 Skill'
   const canInstall = hasPreviewedSource && selectedPreviewItems.length > 0 && selectedAgents.length > 0
   const agentSelectionDisabled = busy || selectedPreviewItems.length === 0
-  const isStepDisabled = (step: number): boolean => step > currentStep
   const selectedAgentLabels = AGENT_OPTIONS.filter((agent) => selectedAgents.includes(agent.id)).map((agent) => agent.label)
-  const sourceSummary = trimmedSource || '等待输入'
-  const statusText = busy ? busyLabel : canInstall ? '准备安装' : `等待 Step ${currentStep}`
+  const foundCount = hasPreviewedSource ? previews.length : 0
+  const installableCount = hasPreviewedSource ? previews.filter((skill) => !skill.installState).length : 0
+  const statusText =
+    busyLabel ?? (canInstall ? '准备安装' : (statusMessage ?? (hasPreviewedSource ? '等待选择' : trimmedSource ? '等待预览' : '等待输入来源')))
 
   return (
-    <section className="grid flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="flex flex-col gap-4">
-        <Card className="gap-0 overflow-hidden rounded-lg border border-border bg-surface p-0 shadow-surface">
-          <Card.Content className="gap-4 p-4">
-            <div className="flex flex-col gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">安装新 Skill</h2>
-                <p className="mt-1 text-xs text-muted">按步骤预览来源、选择内容并安装到目标 Agent。</p>
-              </div>
-              <div className="grid grid-cols-5 gap-2">
-                {STEP_ITEMS.map((item, index) => {
-                  const step = index + 1
-                  const Icon = item.icon
-                  const isActive = currentStep === step
-                  const isDone = currentStep > step
-                  const isDisabled = isStepDisabled(step)
+    <section className="flex h-full min-h-0 flex-col overflow-clip bg-background px-8 py-7 text-foreground">
+      <header className="shrink-0">
+        <h2 className="text-xl font-semibold leading-8 text-foreground">安装</h2>
+        <p className="mt-1 text-sm text-muted">选择要安装的 Skill。路径隐藏，描述优先。</p>
+      </header>
 
-                  return (
-                    <div
-                      key={item.label}
-                      className={cn(
-                        'min-w-0 rounded-md border px-3 py-2.5 transition-colors',
-                        isActive
-                          ? 'border-accent/60 bg-accent-soft text-accent-soft-foreground ring-1 ring-accent/20'
-                          : isDone
-                            ? 'border-accent/35 bg-accent-soft/60 text-accent-soft-foreground'
-                            : 'border-border bg-surface-secondary text-muted',
-                        isDisabled && 'cursor-not-allowed opacity-50'
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={cn(
-                            'flex size-7 shrink-0 items-center justify-center rounded-full border',
-                            isActive
-                              ? 'border-accent bg-accent text-accent-foreground'
-                              : isDone
-                                ? 'border-accent bg-accent text-accent-foreground'
-                                : 'border-border bg-surface text-muted'
-                          )}
-                        >
-                          {isDone ? <RiCheckLine size={14} /> : <Icon size={14} />}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[11px] leading-4 text-muted">Step {step}</div>
-                          <div className="whitespace-nowrap text-[13px] font-medium leading-5">{item.label}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </Card.Content>
-        </Card>
+      <section className="mt-5 shrink-0 rounded-lg border border-border bg-surface px-5 py-4 shadow-surface">
+        <div className="grid items-center gap-4 min-[1180px]:grid-cols-[minmax(0,1fr)_178px_136px_84px_96px]">
+          <label className="min-w-0">
+            <span className="flex h-9 min-w-0 items-center rounded-md border border-border bg-background px-3 transition-colors focus-within:border-accent">
+              <input
+                aria-label="来源"
+                className="min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none placeholder:text-muted"
+                placeholder={`vercel-labs/agent-skills、https://gitlab.example.com/group/repo/-/tree/main/src 或 ${localPathExample}`}
+                value={source}
+                onChange={(event) => updateSource(event.target.value)}
+                disabled={busy}
+              />
+            </span>
+          </label>
 
-        <Card
-          className={cn(
-            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
-            currentStep === 1 ? 'border-accent/60' : currentStep > 1 ? 'border-accent/35' : 'border-border'
-          )}
-        >
-          <Card.Header className="!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5">
-            <div className="flex items-center gap-2">
-              <StepBadge step={1} currentStep={currentStep} />
-              <RiGithubLine size={18} className={currentStep === 1 ? 'text-accent' : 'text-muted'} />
-              <Card.Title className="text-base font-medium">输入来源</Card.Title>
-            </div>
-            {busy && !isPreviewingSource && (
-              <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground">
-                <Spinner size="sm" />
-                <span>{busyLabel}</span>
-              </div>
-            )}
-          </Card.Header>
-          <Card.Content className="gap-0 px-5 py-4">
-            <Input
-              aria-label="Source"
-              placeholder={`vercel-labs/agent-skills、https://gitlab.example.com/group/repo/-/tree/main/src 或 ${localPathExample}`}
-              value={source}
-              onChange={(event) => updateSource(event.target.value)}
-              disabled={busy}
-            />
-          </Card.Content>
-        </Card>
+          <SubdirectoryToggle isSelected={fullDepth} isDisabled={busy} onChange={() => updateFullDepth(!fullDepth)} />
 
-        <Card
-          className={cn(
-            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
-            currentStep === 2 ? 'border-accent/60' : currentStep > 2 ? 'border-accent/35' : 'border-border',
-            isStepDisabled(2) && 'cursor-not-allowed opacity-50'
-          )}
-        >
-          <Card.Header
-            className={cn(
-              '!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5',
-              isStepDisabled(2) && 'pointer-events-none select-none'
-            )}
+          <button
+            type="button"
+            className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-accent px-4 text-[13px] font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-45"
+            onClick={() => void previewSource()}
+            disabled={busy || trimmedSource === ''}
           >
-            <div className="flex items-center gap-2">
-              <StepBadge step={2} currentStep={currentStep} />
-              <RiSearchLine size={18} className={currentStep === 2 ? 'text-accent' : 'text-muted'} />
-              <Card.Title className="text-base font-medium">预览来源</Card.Title>
-            </div>
-          </Card.Header>
-          <Card.Content
-            className={cn('!flex-row !items-center justify-between gap-3 px-5 py-4', isStepDisabled(2) && 'pointer-events-none select-none')}
-          >
-            <div className="grid gap-3">
-              <Card.Description className="text-xs text-muted">
-                {hasPreviewedSource ? `当前来源找到 ${previews.length} 个 Skill。` : '先预览当前输入的来源。'}
-              </Card.Description>
-              <Switch isSelected={fullDepth} onChange={updateFullDepth} isDisabled={busy}>
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-                <Switch.Content>
-                  <div className="text-sm font-medium text-foreground">扫描所有子目录</div>
-                  <div className="text-xs text-muted">默认无结果时自动递归；开启后始终扫描最多 5 层。</div>
-                </Switch.Content>
-              </Switch>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {isPreviewingSource && (
-                <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent-soft-foreground">
-                  <Spinner size="sm" />
-                  <span>{busyLabel}</span>
-                </div>
-              )}
-              <Button variant="primary" onPress={() => void previewSource()} isDisabled={busy || trimmedSource === ''}>
-                <span className="inline-flex items-center gap-1.5">
-                  <RiSearchLine size={16} />
-                  预览
-                </span>
-              </Button>
-            </div>
-          </Card.Content>
-        </Card>
+            {isPreviewingSource ? <Spinner color="current" size="sm" /> : <RiSearchLine size={16} />}
+            <span>预览</span>
+          </button>
 
-        <Card
-          className={cn(
-            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
-            currentStep === 3 ? 'border-accent/60' : currentStep > 3 ? 'border-accent/35' : 'border-border',
-            isStepDisabled(3) && 'cursor-not-allowed opacity-50'
-          )}
-        >
-          <Card.Header
-            className={cn(
-              '!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5',
-              isStepDisabled(3) && 'pointer-events-none select-none'
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <StepBadge step={3} currentStep={currentStep} />
-              <RiCheckboxMultipleLine size={18} className={currentStep === 3 ? 'text-accent' : 'text-muted'} />
-              <Card.Title className="text-base font-medium">选择 Skill</Card.Title>
-            </div>
-            <Chip size="sm" variant="soft">
-              已选择 {selectedPreviewItems.length} 个
-            </Chip>
-          </Card.Header>
-          <Card.Content className={cn('gap-0 px-5 py-4', isStepDisabled(3) && 'pointer-events-none select-none')}>
+          <InstallMetric label="找到" value={foundCount} />
+          <InstallMetric label="可安装" value={installableCount} isSuccess />
+        </div>
+      </section>
+
+      <div className="mt-5 grid min-h-0 flex-1 items-stretch gap-5 overflow-clip xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-clip rounded-lg border border-border bg-surface shadow-surface">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <h3 className="text-base font-semibold text-foreground">候选 Skill</h3>
+            <div className="text-sm text-accent-soft-foreground">已选择 {selectedPreviewItems.length} 个</div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
             {hasPreviewedSource && previews.length > 0 && (
               <CheckboxGroup
                 value={selectedPreviews}
@@ -321,218 +184,217 @@ function InstallPage(): React.JSX.Element {
                   setSelectedPreviews(value.filter((skillPath) => !previews.find((skill) => skill.skillPath === skillPath)?.installState))
                 }
                 isDisabled={busy}
-                className="grid gap-2 md:grid-cols-2"
+                className="grid gap-3"
               >
-                {previews.map((skill) => {
-                  const isSelected = selectedPreviews.includes(skill.skillPath)
-                  const isBlocked = Boolean(skill.installState)
-
-                  return (
-                    <Checkbox
-                      key={skill.skillPath}
-                      value={skill.skillPath}
-                      className={cn(
-                        'rounded-md border p-3 transition-colors',
-                        isBlocked
-                          ? 'cursor-not-allowed border-border bg-surface-secondary opacity-70 hover:border-border hover:bg-surface-secondary'
-                          : isSelected
-                            ? 'border-accent/60 bg-accent-soft ring-1 ring-accent/20'
-                            : 'border-border bg-surface'
-                      )}
-                      isDisabled={isBlocked}
-                    >
-                      <Checkbox.Control className="mt-0.5">
-                        {isSelected && (
-                          <Checkbox.Indicator>
-                            <RiCheckLine size={14} />
-                          </Checkbox.Indicator>
-                        )}
-                      </Checkbox.Control>
-                      <Checkbox.Content className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-foreground">{skill.name}</span>
-                          {isSelected && (
-                            <Chip size="sm" color="accent" variant="soft">
-                              已选择
-                            </Chip>
-                          )}
-                          {skill.installState === 'installed' && (
-                            <Chip size="sm" variant="soft">
-                              已安装
-                            </Chip>
-                          )}
-                          {skill.installState === 'conflict' && (
-                            <Chip size="sm" color="danger" variant="soft">
-                              同名冲突
-                            </Chip>
-                          )}
-                        </div>
-                        <p className="mt-1 text-xs leading-5 text-muted">{skill.description}</p>
-                        {skill.installMessage && <p className="mt-1 text-xs leading-5 text-danger-soft-foreground">{skill.installMessage}</p>}
-                        <Chip className="mt-2 max-w-full font-mono text-[11px]" size="sm" color={isSelected ? 'accent' : 'default'} variant="soft">
-                          <span className="truncate">{skill.skillPath}</span>
-                        </Chip>
-                      </Checkbox.Content>
-                    </Checkbox>
-                  )
-                })}
+                {previews.map((skill) => (
+                  <SkillPreviewOption key={skill.skillPath} skill={skill} isSelected={selectedPreviews.includes(skill.skillPath)} />
+                ))}
               </CheckboxGroup>
             )}
             {!hasPreviewedSource && <EmptyState text="先预览一个 GitHub、GitLab 或本地目录来源。" />}
             {hasPreviewedSource && previews.length === 0 && <EmptyState text="当前来源没有找到 Skill。" />}
-          </Card.Content>
-        </Card>
+          </div>
+        </section>
 
-        <Card
-          className={cn(
-            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
-            currentStep === 4 ? 'border-accent/60' : currentStep > 4 ? 'border-accent/35' : 'border-border',
-            isStepDisabled(4) && 'cursor-not-allowed opacity-50'
-          )}
-        >
-          <Card.Header
-            className={cn(
-              '!flex-row !items-center justify-between gap-3 border-b border-separator px-5 py-3.5',
-              isStepDisabled(4) && 'pointer-events-none select-none'
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <StepBadge step={4} currentStep={currentStep} />
-              <RiRobotLine size={18} className={currentStep === 4 ? 'text-accent' : 'text-muted'} />
-              <Card.Title className="text-base font-medium">选择 Agent</Card.Title>
-            </div>
-            <Chip size="sm" variant="soft">
-              已选择 {selectedAgents.length} 个
-            </Chip>
-          </Card.Header>
-          <Card.Content className={cn('gap-0 px-5 py-4', isStepDisabled(4) && 'pointer-events-none select-none')}>
-            {selectedPreviewItems.length === 0 && <p className="mb-3 text-xs text-muted">请先选择至少一个 Skill。</p>}
+        <aside className="flex min-h-0 flex-col overflow-clip rounded-lg border border-border bg-surface shadow-surface">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
+            <h3 className="text-base font-semibold text-foreground">安装到</h3>
+
             <CheckboxGroup
               value={selectedAgents}
               onChange={(value) => setSelectedAgents(value as AgentId[])}
               isDisabled={agentSelectionDisabled}
-              className="grid gap-2 sm:grid-cols-2"
+              className="mt-6 grid gap-3"
             >
-              {AGENT_OPTIONS.map((agent) => {
-                const Icon = agent.icon
-                const isSelected = selectedAgents.includes(agent.id)
-
-                return (
-                  <Checkbox
-                    key={agent.id}
-                    value={agent.id}
-                    className={cn(
-                      'rounded-md border p-3 transition-colors',
-                      isSelected ? 'border-accent bg-accent-soft ring-1 ring-accent/40' : 'border-border bg-surface'
-                    )}
-                  >
-                    <Checkbox.Control>
-                      {isSelected && (
-                        <Checkbox.Indicator>
-                          <RiCheckLine size={14} />
-                        </Checkbox.Indicator>
-                      )}
-                    </Checkbox.Control>
-                    <Checkbox.Content>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Icon size={18} className={isSelected ? 'text-accent-soft-foreground' : 'text-muted'} />
-                        <span className={isSelected ? 'font-medium text-accent-soft-foreground' : 'font-medium text-foreground'}>{agent.label}</span>
-                        {isSelected && (
-                          <Chip size="sm" color="accent" variant="soft">
-                            已选择
-                          </Chip>
-                        )}
-                      </div>
-                    </Checkbox.Content>
-                  </Checkbox>
-                )
-              })}
+              {AGENT_OPTIONS.map((agent) => (
+                <AgentInstallOption key={agent.id} agent={agent} isSelected={selectedAgents.includes(agent.id)} />
+              ))}
             </CheckboxGroup>
-          </Card.Content>
-        </Card>
 
-        <Card
-          className={cn(
-            'gap-0 overflow-hidden rounded-lg border bg-surface p-0',
-            currentStep === 5 ? 'border-accent/60' : 'border-border',
-            isStepDisabled(5) && 'cursor-not-allowed opacity-50'
-          )}
-        >
-          <Card.Content
-            className={cn('!flex-row !items-center justify-between gap-3 px-5 py-4', isStepDisabled(5) && 'pointer-events-none select-none')}
-          >
-            <div>
-              <div className="flex items-center gap-2">
-                <StepBadge step={5} currentStep={currentStep} />
-                <RiDownloadLine size={18} className={currentStep === 5 ? 'text-accent' : 'text-muted'} />
-                <Card.Title className="text-base font-medium">安装</Card.Title>
-              </div>
-              <Card.Description className="mt-1 text-xs text-muted">
-                将 {selectedPreviewItems.length} 个 Skill 安装到 {selectedAgents.length} 个 Agent。
-              </Card.Description>
-            </div>
-            <Button variant="primary" onPress={() => void installSkills()} isDisabled={busy || !canInstall} isPending={isInstalling}>
-              {({ isPending }) => (
-                <span className="inline-flex items-center gap-1.5">
-                  {isPending ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={16} />}
-                  安装
-                </span>
+            <section className="mt-5 border-t border-border pt-4">
+              <div className="text-xs font-medium text-muted">将安装</div>
+              {selectedPreviewItems.length > 0 ? (
+                <div className="mt-3 max-h-28 overflow-y-auto overscroll-contain pr-1 text-sm text-foreground">
+                  {selectedPreviewItems.map((skill) => (
+                    <div key={skill.skillPath} className="truncate py-1" title={skill.name}>
+                      {skill.name}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 text-sm text-muted">等待选择候选 Skill。</div>
               )}
-            </Button>
-          </Card.Content>
-        </Card>
-      </div>
+            </section>
+          </div>
 
-      <Card className="gap-0 overflow-hidden rounded-lg border border-border bg-surface p-0 shadow-surface xl:sticky xl:top-6 xl:self-start">
-        <Card.Header className="!flex-row !items-center gap-2 border-b border-separator px-4 py-3">
-          <RiTerminalBoxLine size={18} className="text-accent" />
-          <Card.Title className="text-base font-medium">安装摘要</Card.Title>
-        </Card.Header>
-        <Card.Content className="grid gap-3 p-3">
-          <div className="grid gap-2">
-            <SummaryRow label="来源" value={sourceSummary} />
-            <SummaryRow label="Skill" value={`${selectedPreviewItems.length} / ${previews.length}`} />
-            <SummaryRow label="Agent" value={selectedAgentLabels.length > 0 ? selectedAgentLabels.join(', ') : '等待选择'} />
-            <SummaryRow label="状态" value={statusText || '空闲'} isAccent={busy || canInstall} />
-          </div>
-          <div>
-            <div className="mb-2 text-sm font-medium text-foreground">操作日志</div>
-            <div className="min-h-28 rounded-md border border-border bg-surface-secondary p-3 font-mono text-xs leading-5 text-muted">
-              {logs.length > 0 ? logs.map((line, index) => <div key={`${line}-${index}`}>{line}</div>) : '暂无操作记录。'}
+          <div className="shrink-0 border-t border-border px-5 py-4">
+            <button
+              type="button"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-45"
+              onClick={() => void installSkills()}
+              disabled={busy || !canInstall}
+            >
+              {isInstalling ? <Spinner color="current" size="sm" /> : <RiDownloadLine size={18} />}
+              <span>安装 {selectedPreviewItems.length} 个 Skill</span>
+            </button>
+            <div
+              className={cn('mt-3 break-words text-xs leading-5', canInstall || busy ? 'text-success-soft-foreground' : 'text-muted')}
+              title={statusText}
+            >
+              状态：{statusText}
             </div>
+            {selectedAgentLabels.length > 0 && <div className="mt-1 truncate text-xs text-muted">Agent：{selectedAgentLabels.join(', ')}</div>}
           </div>
-        </Card.Content>
-      </Card>
+        </aside>
+      </div>
     </section>
   )
 }
 
-function StepBadge({ step, currentStep }: { step: number; currentStep: number }): React.JSX.Element {
-  const isActive = currentStep === step
-  const isDone = currentStep > step
+function InstallMetric({ label, value, isSuccess = false }: { label: string; value: number; isSuccess?: boolean }): React.JSX.Element {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-muted">{label}</div>
+      <div className={cn('mt-0.5 whitespace-nowrap text-2xl leading-7', isSuccess ? 'text-success-soft-foreground' : 'text-foreground')}>
+        {value} 个
+      </div>
+    </div>
+  )
+}
+
+function SubdirectoryToggle({
+  isSelected,
+  isDisabled,
+  onChange
+}: {
+  isSelected: boolean
+  isDisabled: boolean
+  onChange: () => void
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isSelected}
+      className={cn(
+        'inline-flex h-9 w-full items-center gap-2.5 rounded-md border px-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/25',
+        isSelected
+          ? 'border-accent/45 bg-background text-accent-soft-foreground'
+          : 'border-border bg-background text-muted hover:bg-surface-secondary/60 hover:text-foreground',
+        isDisabled && 'cursor-not-allowed opacity-60'
+      )}
+      onClick={onChange}
+      disabled={isDisabled}
+    >
+      <span
+        className={cn(
+          'inline-flex size-4 shrink-0 rounded-full border transition-colors',
+          isSelected ? 'border-accent bg-accent ring-2 ring-accent/15' : 'border-border bg-muted/70'
+        )}
+      />
+      <span className="min-w-0 truncate text-[13px] font-medium">扫描所有子目录</span>
+    </button>
+  )
+}
+
+function SkillPreviewOption({ skill, isSelected }: { skill: SkillPreview; isSelected: boolean }): React.JSX.Element {
+  const isBlocked = Boolean(skill.installState)
 
   return (
-    <span
+    <Checkbox
+      value={skill.skillPath}
       className={cn(
-        'flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-medium',
-        isActive
-          ? 'border-accent bg-accent text-accent-foreground'
-          : isDone
-            ? 'border-accent bg-accent text-accent-foreground'
-            : 'border-border bg-surface-secondary text-muted'
+        'rounded-lg border px-4 py-4 transition-colors',
+        isBlocked
+          ? 'cursor-not-allowed border-border bg-surface-secondary/70 opacity-75 hover:border-border hover:bg-surface-secondary/70'
+          : isSelected
+            ? 'border-accent bg-accent-soft/80 ring-1 ring-accent/40'
+            : 'border-border bg-surface hover:border-accent/45 hover:bg-surface-hover'
       )}
+      isDisabled={isBlocked}
     >
-      {isDone ? <RiCheckLine size={14} /> : step}
+      <Checkbox.Control
+        className={cn(
+          'mt-1 size-5 shrink-0 rounded border bg-surface-secondary text-accent-foreground',
+          isSelected ? 'border-accent bg-accent' : 'border-border'
+        )}
+      >
+        {isSelected && (
+          <Checkbox.Indicator>
+            <RiCheckLine size={14} />
+          </Checkbox.Indicator>
+        )}
+      </Checkbox.Control>
+      <Checkbox.Content className="min-w-0 flex-1">
+        <div className="grid min-w-0 gap-3 min-[1024px]:grid-cols-[minmax(0,1fr)_96px] min-[1024px]:items-start">
+          <div className="min-w-0">
+            <div className="truncate text-base font-medium text-foreground" title={skill.name}>
+              {skill.name}
+            </div>
+            <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted">{skill.description}</p>
+            {skill.installMessage && <p className="mt-1 line-clamp-2 text-xs leading-5 text-danger-soft-foreground">{skill.installMessage}</p>}
+          </div>
+          <PreviewStateBadge state={skill.installState} />
+        </div>
+      </Checkbox.Content>
+    </Checkbox>
+  )
+}
+
+function PreviewStateBadge({ state }: { state?: SkillPreview['installState'] }): React.JSX.Element {
+  if (state === 'conflict') {
+    return (
+      <span className="inline-flex h-7 w-fit items-center justify-center rounded-md border border-danger/35 bg-danger-soft px-3 text-xs font-medium text-danger-soft-foreground min-[1024px]:justify-self-end">
+        同名冲突
+      </span>
+    )
+  }
+
+  if (state === 'installed') {
+    return (
+      <span className="inline-flex h-7 w-fit items-center justify-center rounded-md border border-border bg-surface-secondary px-3 text-xs font-medium text-muted min-[1024px]:justify-self-end">
+        已安装
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex h-7 w-fit items-center justify-center rounded-md border border-success/35 bg-success-soft px-3 text-xs font-medium text-success-soft-foreground min-[1024px]:justify-self-end">
+      可安装
     </span>
   )
 }
 
-function SummaryRow({ label, value, isAccent = false }: { label: string; value: string; isAccent?: boolean }): React.JSX.Element {
+function AgentInstallOption({ agent, isSelected }: { agent: (typeof AGENT_OPTIONS)[number]; isSelected: boolean }): React.JSX.Element {
+  const Icon = agent.icon
+
   return (
-    <div className="rounded-lg border border-border bg-surface-secondary p-2.5">
-      <div className="text-xs text-muted">{label}</div>
-      <div className={cn('mt-1 truncate text-sm font-medium', isAccent ? 'text-accent-soft-foreground' : 'text-foreground')}>{value}</div>
-    </div>
+    <Checkbox
+      value={agent.id}
+      className={cn(
+        'rounded-md border px-3 py-3 transition-colors',
+        isSelected ? 'border-accent bg-accent-soft ring-1 ring-accent/35' : 'border-border bg-surface hover:border-accent/45 hover:bg-surface-hover'
+      )}
+    >
+      <Checkbox.Control
+        className={cn(
+          'size-5 shrink-0 rounded border bg-surface-secondary text-accent-foreground',
+          isSelected ? 'border-accent bg-accent' : 'border-border'
+        )}
+      >
+        {isSelected && (
+          <Checkbox.Indicator>
+            <RiCheckLine size={14} />
+          </Checkbox.Indicator>
+        )}
+      </Checkbox.Control>
+      <Checkbox.Content>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Icon size={18} className={isSelected ? 'text-accent-soft-foreground' : 'text-muted'} />
+          <span className={cn('truncate text-sm font-medium', isSelected ? 'text-accent-soft-foreground' : 'text-foreground')}>{agent.label}</span>
+        </div>
+      </Checkbox.Content>
+    </Checkbox>
   )
 }
 

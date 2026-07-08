@@ -17,15 +17,23 @@
 }
 
 html,
+body,
 #root {
   height: 100%;
+  overflow: clip;
+  overscroll-behavior: none;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
+  width: 100%;
 }
 
 body {
   margin: 0;
   min-width: 960px;
-  min-height: 100vh;
-  overflow: hidden;
+  height: 100vh;
   color: var(--foreground);
   background: var(--background);
 }

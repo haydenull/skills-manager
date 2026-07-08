@@ -104,7 +104,7 @@ function SettingsPage(): React.JSX.Element {
 
   if (!settings) {
     return (
-      <section className="min-h-full bg-background px-4 py-4 text-foreground">
+      <section className="h-full min-h-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-4 text-foreground">
         <div className="flex min-h-64 items-center justify-center rounded-lg border border-border bg-surface p-8 text-muted shadow-surface">
           <Spinner size="sm" />
         </div>
@@ -113,7 +113,7 @@ function SettingsPage(): React.JSX.Element {
   }
 
   return (
-    <section className="min-h-full bg-background px-4 py-4 text-foreground">
+    <section className="h-full min-h-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-4 text-foreground">
       <div className="mx-auto max-w-[1180px]">
         <header className="flex items-center gap-2.5">
           <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-accent/35 bg-accent-soft text-accent-soft-foreground">
