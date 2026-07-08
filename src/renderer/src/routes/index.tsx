@@ -315,7 +315,7 @@ function SkillListRow({
       type="button"
       className={cn(
         'grid w-full gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 min-[1180px]:grid-cols-[minmax(0,1fr)_132px_96px] min-[1180px]:items-center',
-        isSelected ? 'border-accent/50 bg-accent-soft/70 ring-1 ring-inset ring-accent/50' : 'hover:bg-surface-hover'
+        isSelected ? 'border-b-transparent bg-accent-soft/70 ring-1 ring-inset ring-accent/50' : 'hover:bg-surface-hover'
       )}
       onClick={onSelect}
     >
