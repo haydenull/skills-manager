@@ -7,7 +7,7 @@ skills-manager is a desktop Skills management tool for installing, updating, deb
 ## Features
 
 - Install skills from GitHub, self-hosted GitLab, or local directories.
-- Update checking: GitHub uses directory tree SHA; GitLab and local directories use `sha256` file hashes.
+- Update checking: GitHub and GitLab use repository tree metadata when available; local directories and clone fallbacks use `sha256` content hashes.
 - Debug mode: temporarily switch a skill to a local directory for development.
 
 ## Installation

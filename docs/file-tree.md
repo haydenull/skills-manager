@@ -8,6 +8,7 @@
 .
 ├── AGENTS.md                    # 面向 AI agent 的仓库规则、命令和文档索引
 ├── README.md                    # 项目简介、安装、使用和开发说明入口
+├── README.zh-CN.md              # 中文项目简介、安装、使用和开发说明入口
 ├── package.json                 # 项目元信息、脚本、依赖版本和 Electron 入口
 ├── pnpm-lock.yaml               # pnpm 依赖锁文件，修改依赖后应同步提交
 ├── electron.vite.config.ts      # Electron Vite 配置，包含 renderer 的 @renderer 别名
@@ -16,6 +17,9 @@
 ├── tsconfig.json                # TypeScript project references 总入口
 ├── tsconfig.node.json           # main、preload、shared 和构建配置的 TS 配置
 ├── tsconfig.web.json            # renderer、preload 声明和 shared 类型的 TS 配置
+├── .github/                     # GitHub Actions 工作流配置
+│   └── workflows/
+│       └── release.yml          # 手动发布、构建 macOS/Windows 安装包和创建 Release
 ├── build/                       # Electron Builder 使用的打包资源和平台配置
 │   ├── entitlements.mac.plist   # macOS 权限继承配置
 │   ├── icon.icns                # macOS 应用图标
@@ -23,10 +27,20 @@
 │   └── icon.png                 # 通用应用图标
 ├── docs/                        # 项目说明文档目录
 │   ├── development.md           # 开发环境准备、常用命令和本地开发隔离说明
+│   ├── development.zh-CN.md     # 中文开发说明
 │   ├── file-tree.md             # 当前文件树说明
-│   └── installation.md          # macOS 安装包下载、安装和解除隔离标记说明
+│   ├── installation.md          # Windows/macOS 安装包下载、安装和 macOS 解除隔离标记说明
+│   └── installation.zh-CN.md    # 中文安装说明
 ├── resources/                   # 应用运行或打包时引用的资源
 │   └── icon.png                 # 应用资源图标
+├── ui/                          # UI 参考图和设计说明
+│   ├── README.md                # 首页交互和字段说明
+│   ├── home-dark.png            # 首页深色模式参考图
+│   ├── home-light.png           # 首页浅色模式参考图
+│   ├── install-description-list-dark-v1.png # 安装页深色参考图
+│   ├── install-description-list-light-v1.png # 安装页浅色参考图
+│   ├── settings-redesign-dark-v2.png # 设置页深色参考图
+│   └── settings-redesign-light-v2.png # 设置页浅色参考图
 └── src/                         # 源码目录
     ├── main/                    # Electron 主进程代码
     │   ├── index.ts             # 应用启动、窗口创建和主进程入口
@@ -69,15 +83,19 @@
 - `pnpm-lock.yaml` - pnpm 依赖锁文件，修改依赖后应同步提交。
 - `electron.vite.config.ts` - Electron Vite 构建配置，包含 renderer 的 `@renderer` 路径别名。
 - `electron-builder.yml` - Electron Builder 打包配置，包含应用 ID、产品名、平台包和资源规则。
+- `.github/workflows/release.yml` - GitHub Actions 手动发布流程，构建 macOS/Windows 安装包并创建 GitHub Release。
 - `eslint.config.mjs` - ESLint 配置，接入 TypeScript、React、Hooks、Refresh 和 Prettier 兼容规则。
 - `tsconfig.json` - TypeScript project references 总入口。
 - `tsconfig.node.json` - main、preload、shared 和构建配置文件的 TypeScript 配置。
 - `tsconfig.web.json` - renderer、preload 声明和 shared 类型的 TypeScript 配置。
 - `AGENTS.md` - 面向 AI agent 的仓库规则、常用命令和文档索引。
 - `README.md` - 项目简介、安装、使用和开发说明入口。
+- `README.zh-CN.md` - 中文项目简介、安装、使用和开发说明入口。
+- `ui/README.md` - UI 参考图说明和首页交互说明。
 
 ## 生成目录
 
 - `out/` - Electron Vite 构建产物，不直接编辑。
 - `dist/` - 可能由打包流程生成的发行产物，不直接编辑。
+- `.debug/` - `pnpm dev` 使用的本地开发隔离环境，不直接编辑或提交。
 - `node_modules/` - 依赖安装目录，不纳入代码审查范围。

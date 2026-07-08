@@ -7,7 +7,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 ## 功能
 
 - 支持从 GitHub、自部署 GitLab 和本地目录安装 skills。
-- 支持更新检查：GitHub 依赖目录 tree sha，GitLab 和本地目录依赖 `sha256` 文件哈希。
+- 支持更新检查：GitHub 和 GitLab 优先使用仓库 tree 元数据，本地目录和 clone 回退使用 `sha256` 内容哈希。
 - 支持调试模式，可临时切换到本地 Skill 目录。
 
 ## 安装

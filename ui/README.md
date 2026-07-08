@@ -1,11 +1,15 @@
 # UI Design Notes
 
-本目录保存首页重设计参考图。
+本目录保存主要页面的 UI 重设计参考图。
 
 ## 文件
 
 - `home-light.png` - 首页浅色模式设计图。
 - `home-dark.png` - 首页深色模式设计图。
+- `install-description-list-light-v1.png` - 安装页浅色模式设计图。
+- `install-description-list-dark-v1.png` - 安装页深色模式设计图。
+- `settings-redesign-light-v2.png` - 设置页浅色模式设计图。
+- `settings-redesign-dark-v2.png` - 设置页深色模式设计图。
 
 ## 设计方向
 
@@ -22,9 +26,8 @@
 - 顶部按钮使用 `检查更新`，语义是刷新列表并重新计算更新状态。
 - 列表中的 Agent badge 只读，不承担安装或移除操作。
 - Agent 操作只在右侧 `Agent 安装` 区域完成。
-- 右侧操作按钮分两排：
-  - `打开文件夹` / `检查更新`
-  - `退出调试` / `删除`
+- 右侧 `基础信息` 中的路径行提供打开文件夹入口。
+- 右侧底部操作区提供 `更新`、`调试`/`退出`、`删除`；其中 `更新` 只在 Skill 可更新时显示。
 - `删除` 使用弱红色文字或描边，不使用大面积红底。
 
 ## 字段说明
