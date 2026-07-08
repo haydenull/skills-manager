@@ -43,6 +43,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check Homebrew tap token
+        run: |
+          if [[ -z "${HOMEBREW_TAP_TOKEN}" ]]; then
+            echo "HOMEBREW_TAP_TOKEN is required to update haydenull/homebrew-tap"
+            exit 1
+          fi
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
   build-mac:
     runs-on: macos-latest
     needs: validate-release
@@ -178,3 +187,111 @@ jobs:
           gh release create "$tag" "${assets[@]}" --title "$tag" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew-tap:
+    runs-on: macos-latest
+    needs: publish-release
+
+    steps:
+      - name: Download mac artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-mac
+          path: release-mac
+
+      - name: Prepare cask values
+        id: cask
+        run: |
+          set -euo pipefail
+
+          version="${{ inputs.version }}"
+          arm_dmg="release-mac/skills-manager-${version}-arm64.dmg"
+          x64_dmg="release-mac/skills-manager-${version}-x64.dmg"
+
+          for file in "$arm_dmg" "$x64_dmg"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Missing expected mac artifact: $file"
+              exit 1
+            fi
+          done
+
+          arm_sha="$(shasum -a 256 "$arm_dmg")"
+          x64_sha="$(shasum -a 256 "$x64_dmg")"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "arm_sha=${arm_sha%% *}" >> "$GITHUB_OUTPUT"
+          echo "x64_sha=${x64_sha%% *}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v6
+        with:
+          repository: haydenull/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update cask
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+
+          ruby <<'RUBY'
+          require "fileutils"
+
+          version = ENV.fetch("VERSION")
+          arm_sha = ENV.fetch("ARM_SHA")
+          x64_sha = ENV.fetch("X64_SHA")
+
+          FileUtils.mkdir_p("Casks")
+          File.write("Casks/skills-manager.rb", <<~CASK)
+            cask "skills-manager" do
+              arch arm: "arm64", intel: "x64"
+
+              version "#{version}"
+              sha256 arm:   "#{arm_sha}",
+                     intel: "#{x64_sha}"
+
+              url "https://github.com/haydenull/skills-manager/releases/download/v\#{version}/skills-manager-\#{version}-\#{arch}.dmg",
+                  verified: "github.com/haydenull/skills-manager/"
+              name "Skills Manager"
+              desc "Desktop skills manager for Claude Code and Codex"
+              homepage "https://github.com/haydenull/skills-manager"
+
+              app "Skills Manager.app"
+            end
+          CASK
+          RUBY
+        env:
+          VERSION: ${{ steps.cask.outputs.version }}
+          ARM_SHA: ${{ steps.cask.outputs.arm_sha }}
+          X64_SHA: ${{ steps.cask.outputs.x64_sha }}
+
+      - name: Audit cask
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+
+          tap_root="$(brew --repository)/Library/Taps/haydenull"
+          tap_path="$tap_root/homebrew-tap"
+
+          mkdir -p "$tap_root"
+          if [[ ! -e "$tap_path" ]]; then
+            ln -s "$PWD" "$tap_path"
+          fi
+
+          brew audit --cask --online haydenull/tap/skills-manager
+
+      - name: Commit Homebrew tap update
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$(git status --short Casks/skills-manager.rb)" ]]; then
+            echo "Homebrew cask is already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/skills-manager.rb
+          git commit -m "Update skills-manager to ${{ inputs.version }}"
+          git push
