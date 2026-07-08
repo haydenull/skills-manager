@@ -250,8 +250,7 @@ jobs:
               sha256 arm:   "#{arm_sha}",
                      intel: "#{x64_sha}"
 
-              url "https://github.com/haydenull/skills-manager/releases/download/v\#{version}/skills-manager-\#{version}-\#{arch}.dmg",
-                  verified: "github.com/haydenull/skills-manager/"
+              url "https://github.com/haydenull/skills-manager/releases/download/v\#{version}/skills-manager-\#{version}-\#{arch}.dmg"
               name "Skills Manager"
               desc "Desktop skills manager for Claude Code and Codex"
               homepage "https://github.com/haydenull/skills-manager"
