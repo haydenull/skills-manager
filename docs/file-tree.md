@@ -26,6 +26,10 @@
 │   ├── icon.ico                 # Windows 应用图标
 │   └── icon.png                 # 通用应用图标
 ├── docs/                        # 项目说明文档目录
+│   ├── assets/                   # README 使用的应用截图
+│   │   ├── install.png           # 安装新 Skill 页面截图
+│   │   ├── settings.png          # 设置页面截图
+│   │   └── skill-library.png     # Skill Library 页面截图
 │   ├── development.md           # 开发环境准备、常用命令和本地开发隔离说明
 │   ├── development.zh-CN.md     # 中文开发说明
 │   ├── file-tree.md             # 当前文件树说明
@@ -71,7 +75,7 @@
             ├── lib/             # renderer 工具函数
             │   └── cn.ts        # className 合并工具
             └── routes/          # TanStack Router 页面路由
-                ├── __root.tsx   # 根布局和顶部导航
+                ├── __root.tsx   # 根布局和侧边栏导航
                 ├── index.tsx    # 已安装 Skill 管理页
                 ├── install.tsx  # 安装新 Skill 页面
                 └── settings.tsx # 设置页面

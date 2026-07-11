@@ -10,6 +10,20 @@ skills-manager is a desktop Skills management tool for installing, updating, deb
 - Update checking: GitHub and GitLab use repository tree metadata when available; local directories and clone fallbacks use `sha256` content hashes.
 - Debug mode: temporarily switch a skill to a local directory for development.
 
+## Screenshots
+
+### Skill Library
+
+![Skill Library](docs/assets/skill-library.png)
+
+### Install a Skill
+
+![Install a Skill](docs/assets/install.png)
+
+### Settings
+
+![Settings](docs/assets/settings.png)
+
 ## Installation
 
 See [Installation Guide](docs/installation.md).
@@ -20,7 +34,7 @@ See [Installation Guide](docs/installation.md).
 
 Before installing skills from a self-hosted GitLab, configure a Personal access token for that host on the Settings page.
 
-1. Open the **Settings** page from the top navigation.
+1. Open the **Settings** page from the sidebar.
 2. Enter the GitLab domain in `GitLab Host`, e.g. `gitlab.example.com`.
 3. Enter your Personal access token in `GitLab Token`.
 4. Click **Save**.
@@ -29,7 +43,7 @@ The app stores tokens per host and uses them when calling the corresponding GitL
 
 ### Install a Skill
 
-1. Open the **Install New Skill** page from the top navigation.
+1. Open the **Install New Skill** page from the sidebar.
 2. Enter the skill source in the input field.
 3. Click **Preview** to see available skills.
 4. Select the skills you want to install.
@@ -55,7 +69,7 @@ The **Installed Skills** page lists all skills managed by this app. Available ac
 - Remove a skill from an agent
 - Update skills with a new version available
 - Enter or exit debug mode
-- Open the skill storage directory
+- Open the active skill directory (the debug directory while debugging)
 - Delete a skill entirely
 
 The **Updatable** badge indicates that new content is available from the skill's source.
@@ -72,7 +86,7 @@ Exiting debug mode restores the skill to the version stored in the app.
 
 On the **Settings** page you can:
 
-- Toggle dark or light appearance
+- Choose system, light, or dark appearance
 - Configure or remove Personal access tokens for self-hosted GitLab
 - Check for app updates and open the Releases download page
 - Open the app data directory

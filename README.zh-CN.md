@@ -10,6 +10,20 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 - 支持更新检查：GitHub 和 GitLab 优先使用仓库 tree 元数据，本地目录和 clone 回退使用 `sha256` 内容哈希。
 - 支持调试模式，可临时切换到本地 Skill 目录。
 
+## 应用截图
+
+### Skill Library
+
+![Skill Library](docs/assets/skill-library.png)
+
+### 安装新 Skill
+
+![安装新 Skill](docs/assets/install.png)
+
+### 设置
+
+![设置](docs/assets/settings.png)
+
 ## 安装
 
 安装应用见 [安装说明](docs/installation.zh-CN.md)。
@@ -20,7 +34,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 从自部署 GitLab 安装 Skill 前，需要先在"设置"页面配置对应 host 的 Personal access token。
 
-1. 打开顶部导航中的"设置"页面。
+1. 打开侧边栏中的"设置"页面。
 2. 在 `GitLab Host` 中填写 GitLab 域名，例如 `gitlab.example.com`。
 3. 在 `GitLab Token` 中填写 Personal access token。
 4. 点击"保存"。
@@ -29,7 +43,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 ### 安装 Skill
 
-1. 打开顶部导航中的"安装新 Skill"页面。
+1. 打开侧边栏中的"安装新 Skill"页面。
 2. 在来源输入框中填写 Skill 来源。
 3. 点击"预览"，查看可安装的 skills。
 4. 勾选要安装的 Skill。
@@ -55,7 +69,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 - 从某个 Agent 移除 Skill
 - 更新有新版本的 Skill
 - 进入或退出调试模式
-- 打开 Skill 存储目录
+- 打开当前 Skill 目录（调试中时为调试目录）
 - 完全删除 Skill
 
 列表中的"可更新"标记表示该 Skill 的来源有新内容可同步。
@@ -72,7 +86,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 在"设置"页面可以：
 
-- 切换深色或浅色外观
+- 选择跟随系统、浅色或深色外观
 - 配置或删除自部署 GitLab 的 Personal access token
 - 检查应用更新，并打开 Releases 下载页
 - 打开应用数据目录
