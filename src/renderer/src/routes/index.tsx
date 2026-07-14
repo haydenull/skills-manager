@@ -14,6 +14,7 @@ import {
   RiGithubLine,
   RiGitlabLine,
   RiInboxLine,
+  RiLoader4Line,
   RiOpenaiLine,
   RiPlayLine,
   RiRefreshLine,
@@ -478,10 +479,22 @@ function SkillInspector({
         <h3 className="text-xs font-semibold text-foreground">操作</h3>
         <div className={cn('mt-3 grid gap-2', hasUpdate ? 'grid-cols-3' : 'grid-cols-2')}>
           {hasUpdate && (
-            <Button variant="outline" className="h-9 w-full rounded-md" onPress={() => onUpdate(skill.name)} isDisabled={busy} isPending={isUpdating}>
+            <Button
+              variant="outline"
+              className="h-9 w-full rounded-md aria-disabled:opacity-100"
+              onPress={() => onUpdate(skill.name)}
+              isDisabled={busy}
+              isPending={isUpdating}
+            >
               {({ isPending: buttonIsPending }) => (
                 <span className="inline-flex w-full items-center justify-center gap-1.5">
-                  {buttonIsPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
+                  {buttonIsPending ? (
+                    <span data-slot="spinner" className="inline-flex size-5 shrink-0 animate-spin text-accent">
+                      <RiLoader4Line className="size-5" />
+                    </span>
+                  ) : (
+                    <RiRefreshLine size={16} />
+                  )}
                   {buttonIsPending ? '更新中' : '更新'}
                 </span>
               )}
