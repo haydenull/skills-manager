@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { InstalledSkill, SettingsInfo, SkillUpdateStatus } from '../../shared/skills-types'
+import { executeIpcOperation } from './lib/execute-ipc-operation'
 
 export const skillsQueryKeys = {
   installed: ['skills', 'installed'] as const,
@@ -25,13 +26,13 @@ export const skillsQueryOptions = {
 }
 
 export function listInstalledSkills(): Promise<InstalledSkill[]> {
-  return window.api.skills.listGlobal()
+  return executeIpcOperation(() => window.api.skills.listGlobal(), { skipErrorHandler: true })
 }
 
 export function checkSkillUpdates(names: string[]): Promise<SkillUpdateStatus[]> {
-  return window.api.skills.checkUpdates(names)
+  return executeIpcOperation(() => window.api.skills.checkUpdates(names), { skipErrorHandler: true })
 }
 
 export function getSettingsInfo(): Promise<SettingsInfo> {
-  return window.api.skills.getSettingsInfo()
+  return executeIpcOperation(() => window.api.skills.getSettingsInfo(), { skipErrorHandler: true })
 }

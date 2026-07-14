@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { Checkbox, CheckboxGroup, Spinner } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
 import { RiCheckLine, RiClaudeLine, RiDownloadLine, RiInboxLine, RiOpenaiLine, RiRobotLine, RiSearchLine } from '@remixicon/react'
-import type { AgentId, OperationResult, SkillPreview } from '../../../shared/skills-types'
+import type { AgentId, InstallRequest, OperationResult, SkillPreview } from '../../../shared/skills-types'
 import { cn } from '../lib/cn'
+import { executeIpcOperation, IpcOperationError } from '../lib/execute-ipc-operation'
 import { skillsQueryKeys } from '../skills-queries'
 
 export const Route = createFileRoute('/install')({
@@ -29,13 +30,18 @@ function InstallPage(): React.JSX.Element {
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const installMutation = useMutation({
-    mutationFn: window.api.skills.install
+    mutationFn: (request: InstallRequest) =>
+      executeIpcOperation(() => window.api.skills.install(request), {
+        skipErrorHandler: true
+      })
   })
 
   useEffect(() => {
-    window.api.app.getInfo().then((info) => {
-      setLocalPathExample(info.platform === 'win32' ? 'C:\\Users\\me\\skills' : '~/skills')
-    })
+    executeIpcOperation(() => window.api.app.getInfo())
+      .then((info) => {
+        setLocalPathExample(info.platform === 'win32' ? 'C:\\Users\\me\\skills' : '~/skills')
+      })
+      .catch(() => undefined)
   }, [])
 
   const selectedPreviewItems = previews.filter((skill) => selectedPreviews.includes(skill.skillPath) && !skill.installState)
@@ -60,7 +66,7 @@ function InstallPage(): React.JSX.Element {
 
   async function previewSource(): Promise<void> {
     await run('正在预览来源', async () => {
-      const skills = await window.api.skills.previewSource(trimmedSource, fullDepth)
+      const skills = await executeIpcOperation(() => window.api.skills.previewSource(trimmedSource, fullDepth), { skipErrorHandler: true })
       setPreviewedSource(trimmedSource)
       setPreviews(skills)
       setSelectedPreviews([])
@@ -76,15 +82,15 @@ function InstallPage(): React.JSX.Element {
     await run('正在安装 Skill', async () => {
       const installedCount = selectedPreviewItems.length
       const installedAgentLabels = selectedAgentLabels.join(', ')
-      const result = await installMutation.mutateAsync({
-        source: trimmedSource,
-        skills: selectedPreviewItems,
-        agents: selectedAgents,
-        fullDepth
-      })
-      await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
-      if (result.ok) {
-        const skills = await window.api.skills.previewSource(trimmedSource, fullDepth)
+      try {
+        const result = await installMutation.mutateAsync({
+          source: trimmedSource,
+          skills: selectedPreviewItems,
+          agents: selectedAgents,
+          fullDepth
+        })
+        await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
+        const skills = await executeIpcOperation(() => window.api.skills.previewSource(trimmedSource, fullDepth), { skipErrorHandler: true })
         setPreviewedSource(trimmedSource)
         setPreviews(skills)
         setSelectedPreviews([])
@@ -92,12 +98,15 @@ function InstallPage(): React.JSX.Element {
         toast.success('安装完成', {
           description: `已安装 ${installedCount} 个 Skill 到 ${installedAgentLabels}。`
         })
-      } else {
-        toast.danger('安装失败', {
-          description: result.logs.slice(0, 3).join('\n') || '请稍后重试。'
-        })
+        return result
+      } catch (error) {
+        if (error instanceof IpcOperationError) {
+          toast.danger('安装失败', {
+            description: error.logs.slice(0, 3).join('\n') || '请稍后重试。'
+          })
+        }
+        throw error
       }
-      return result
     })
   }
 

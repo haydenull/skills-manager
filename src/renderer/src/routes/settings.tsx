@@ -20,11 +20,17 @@ import {
 import { useEffect, useState } from 'react'
 import type { AgentId, AppInfo, AppUpdateStatus, SettingsFolderTarget } from '../../../shared/skills-types'
 import { cn } from '../lib/cn'
+import { executeIpcOperation, IpcOperationError } from '../lib/execute-ipc-operation'
 import { skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage
 })
+
+function getIpcErrorMessage(error: unknown): string {
+  if (error instanceof IpcOperationError) return error.logs.join('\n')
+  return error instanceof Error ? error.message : String(error)
+}
 
 function SettingsPage(): React.JSX.Element {
   const settingsQuery = useQuery(skillsQueryOptions.settingsInfo())
@@ -41,65 +47,98 @@ function SettingsPage(): React.JSX.Element {
   const currentTheme = resolvedTheme ?? theme
 
   useEffect(() => {
-    window.api.app.getInfo().then(setAppInfo)
+    executeIpcOperation(() => window.api.app.getInfo())
+      .then(setAppInfo)
+      .catch(() => undefined)
   }, [])
 
   useEffect(() => window.api.app.onUpdateStatus(setUpdateStatus), [])
 
   async function openFolder(target: SettingsFolderTarget, agentId?: AgentId): Promise<void> {
     setOpenError('')
-    const result = await window.api.skills.openSettingsFolder(target, agentId)
-    if (!result.ok) setOpenError(result.logs.join('\n'))
+    try {
+      await executeIpcOperation(() => window.api.skills.openSettingsFolder(target, agentId), { skipErrorHandler: true })
+    } catch (error) {
+      setOpenError(getIpcErrorMessage(error))
+    }
   }
 
   async function checkUpdates(): Promise<void> {
     setUpdateBusy('check')
-    setUpdateStatus(await window.api.app.checkForUpdates())
-    setUpdateBusy('')
+    try {
+      setUpdateStatus(await executeIpcOperation(() => window.api.app.checkForUpdates()))
+    } catch {
+      return
+    } finally {
+      setUpdateBusy('')
+    }
   }
 
   async function openReleasePage(): Promise<void> {
     setUpdateBusy('release')
-    await window.api.app.openReleasePage()
-    setUpdateBusy('')
+    try {
+      await executeIpcOperation(() => window.api.app.openReleasePage())
+    } catch {
+      return
+    } finally {
+      setUpdateBusy('')
+    }
   }
 
   async function saveGitLabToken(): Promise<void> {
     setGitlabBusy('save')
     setGitlabMessage('')
-    const result = await window.api.skills.saveGitLabToken(gitlabHost, gitlabToken)
-    setGitlabMessage(result.logs.join('\n'))
-    if (result.ok) {
+    try {
+      const result = await executeIpcOperation(() => window.api.skills.saveGitLabToken(gitlabHost, gitlabToken), { skipErrorHandler: true })
+      setGitlabMessage(result.logs.join('\n'))
       setGitlabHost('')
       setGitlabToken('')
       await settingsQuery.refetch()
+    } catch (error) {
+      setGitlabMessage(getIpcErrorMessage(error))
+    } finally {
+      setGitlabBusy('')
     }
-    setGitlabBusy('')
   }
 
   async function deleteGitLabToken(host: string): Promise<void> {
     setGitlabBusy(host)
     setGitlabMessage('')
-    const result = await window.api.skills.deleteGitLabToken(host)
-    setGitlabMessage(result.logs.join('\n'))
-    if (result.ok) await settingsQuery.refetch()
-    setGitlabBusy('')
+    try {
+      const result = await executeIpcOperation(() => window.api.skills.deleteGitLabToken(host), { skipErrorHandler: true })
+      setGitlabMessage(result.logs.join('\n'))
+      await settingsQuery.refetch()
+    } catch (error) {
+      setGitlabMessage(getIpcErrorMessage(error))
+    } finally {
+      setGitlabBusy('')
+    }
   }
 
   async function copyGitLabToken(host: string): Promise<void> {
     setGitlabBusy(`copy:${host}`)
-    const token = await window.api.skills.getGitLabToken(host)
-    if (token) {
-      await navigator.clipboard.writeText(token)
-      toast.success('已复制 GitLab token', {
-        description: host
-      })
-    } else {
-      toast.danger('未找到 GitLab token', {
-        description: host
-      })
+    let token: string
+    try {
+      token = await executeIpcOperation(() => window.api.skills.getGitLabToken(host))
+    } catch {
+      setGitlabBusy('')
+      return
     }
-    setGitlabBusy('')
+
+    try {
+      if (token) {
+        await navigator.clipboard.writeText(token)
+        toast.success('已复制 GitLab token', {
+          description: host
+        })
+      } else {
+        toast.danger('未找到 GitLab token', {
+          description: host
+        })
+      }
+    } finally {
+      setGitlabBusy('')
+    }
   }
 
   if (!settings) {

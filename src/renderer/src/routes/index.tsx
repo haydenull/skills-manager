@@ -24,6 +24,7 @@ import {
 import type { AgentId, InstalledSkill, OperationResult } from '../../../shared/skills-types'
 import { type SourceFilter, useHomeSidebar } from '../home-sidebar-context'
 import { cn } from '../lib/cn'
+import { executeIpcOperation } from '../lib/execute-ipc-operation'
 import { skillsQueryKeys, skillsQueryOptions } from '../skills-queries'
 
 export const Route = createFileRoute('/')({
@@ -37,17 +38,21 @@ const AGENT_OPTIONS = [
 
 type SkillStatusFilter = 'all' | 'updates' | 'debug'
 
+type AgentMutationVariables = {
+  skillName: string
+  agent: AgentId
+}
+
 const STATUS_FILTERS = [
   { id: 'all', label: '全部' },
   { id: 'updates', label: '可更新' },
   { id: 'debug', label: '调试中' }
 ] satisfies Array<{ id: SkillStatusFilter; label: string }>
 
-type OperationMutationVariables = {
-  label: string
-  action: () => Promise<OperationResult | void>
-  invalidateUpdates: boolean
-  showDefaultResult: boolean
+function showOperationSuccess(result: OperationResult): void {
+  toast.success('操作完成', {
+    description: result.logs.slice(0, 3).join('\n') || undefined
+  })
 }
 
 function DashboardPage(): React.JSX.Element {
@@ -80,31 +85,65 @@ function DashboardPage(): React.JSX.Element {
   })
   const selectedSkill = filteredSkills.find((skill) => skill.name === selectedSkillName) ?? filteredSkills[0] ?? null
 
-  const operationMutation = useMutation({
-    mutationFn: async ({ action, invalidateUpdates }: OperationMutationVariables) => {
+  async function executeSkillOperation(action: () => Promise<OperationResult>, invalidateUpdates = false): Promise<OperationResult> {
+    return executeIpcOperation(async () => {
       const result = await action()
       await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.installed })
       if (invalidateUpdates) await queryClient.invalidateQueries({ queryKey: skillsQueryKeys.updatesRoot })
       return result
-    },
-    onSuccess: (result, variables) => {
-      if (result && !result.ok) {
-        toast.danger('操作失败', {
-          description: result.logs.slice(0, 3).join('\n') || '请稍后重试。'
+    })
+  }
+
+  const addAgentMutation = useMutation({
+    mutationFn: ({ skillName, agent }: AgentMutationVariables) =>
+      executeSkillOperation(() =>
+        window.api.skills.addAgents({
+          names: [skillName],
+          agents: [agent]
         })
-        return
-      }
-      if (variables.showDefaultResult) {
-        toast.success('操作完成', {
-          description: result?.logs.slice(0, 3).join('\n') || undefined
+      ),
+    onSuccess: showOperationSuccess
+  })
+
+  const removeAgentMutation = useMutation({
+    mutationFn: ({ skillName, agent }: AgentMutationVariables) =>
+      executeSkillOperation(() =>
+        window.api.skills.remove({
+          names: [skillName],
+          agents: [agent]
         })
-      }
-    },
-    onError: (error) => {
-      toast.danger('操作失败', {
-        description: error instanceof Error ? error.message : String(error)
-      })
-    }
+      ),
+    onSuccess: showOperationSuccess
+  })
+
+  const removeSkillMutation = useMutation({
+    mutationFn: (skillName: string) =>
+      executeSkillOperation(() =>
+        window.api.skills.remove({
+          names: [skillName],
+          agents: []
+        })
+      ),
+    onSuccess: showOperationSuccess
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (skillName: string) => executeSkillOperation(() => window.api.skills.update([skillName]), true),
+    onSuccess: showOperationSuccess
+  })
+
+  const startDebugMutation = useMutation({
+    mutationFn: (skillName: string) => executeSkillOperation(() => window.api.skills.startDebug(skillName)),
+    onSuccess: showOperationSuccess
+  })
+
+  const stopDebugMutation = useMutation({
+    mutationFn: (skillName: string) => executeSkillOperation(() => window.api.skills.stopDebug(skillName)),
+    onSuccess: showOperationSuccess
+  })
+
+  const openStorageFolderMutation = useMutation({
+    mutationFn: (skillName: string) => executeSkillOperation(() => window.api.skills.openStorageFolder(skillName))
   })
 
   const refreshMutation = useMutation({
@@ -130,63 +169,12 @@ function DashboardPage(): React.JSX.Element {
     }
   })
 
-  function run(label: string, action: () => Promise<OperationResult | void>, invalidateUpdates = false, showDefaultResult = true): void {
-    operationMutation.mutate({ label, action, invalidateUpdates, showDefaultResult })
-  }
-
-  function refreshSkillsWithFeedback(): void {
-    refreshMutation.mutate()
-  }
-
-  function addAgent(skill: InstalledSkill, agent: AgentId): void {
-    run(`正在安装 ${skill.name}`, () =>
-      window.api.skills.addAgents({
-        names: [skill.name],
-        agents: [agent]
-      })
-    )
-  }
-
-  function removeAgent(skill: InstalledSkill, agent: AgentId): void {
-    run(`正在移除 ${skill.name}`, () =>
-      window.api.skills.remove({
-        names: [skill.name],
-        agents: [agent]
-      })
-    )
-  }
-
   function toggleAgent(skill: InstalledSkill, agent: AgentId): void {
     if (skill.agents.includes(agent)) {
-      removeAgent(skill, agent)
+      removeAgentMutation.mutate({ skillName: skill.name, agent })
     } else {
-      addAgent(skill, agent)
+      addAgentMutation.mutate({ skillName: skill.name, agent })
     }
-  }
-
-  function removeAll(skill: InstalledSkill): void {
-    run(`正在完全删除 ${skill.name}`, () =>
-      window.api.skills.remove({
-        names: [skill.name],
-        agents: []
-      })
-    )
-  }
-
-  function updateSkill(skill: InstalledSkill): void {
-    run(`正在更新 ${skill.name}`, () => window.api.skills.update([skill.name]), true)
-  }
-
-  function startDebug(skill: InstalledSkill): void {
-    run(`正在调试 ${skill.name}`, () => window.api.skills.startDebug(skill.name))
-  }
-
-  function stopDebug(skill: InstalledSkill): void {
-    run(`正在退出 ${skill.name} 调试`, () => window.api.skills.stopDebug(skill.name))
-  }
-
-  function openStorageFolder(skill: InstalledSkill): void {
-    run(`正在打开 ${skill.name} ${skill.debugPath ? '调试' : '正式'}文件夹`, () => window.api.skills.openStorageFolder(skill.name), false, false)
   }
 
   async function copyValue(label: string, value: string): Promise<void> {
@@ -194,7 +182,15 @@ function DashboardPage(): React.JSX.Element {
     toast.success(`已复制${label}`)
   }
 
-  const busy = operationMutation.isPending || refreshMutation.isPending
+  const busy =
+    addAgentMutation.isPending ||
+    removeAgentMutation.isPending ||
+    removeSkillMutation.isPending ||
+    updateMutation.isPending ||
+    startDebugMutation.isPending ||
+    stopDebugMutation.isPending ||
+    openStorageFolderMutation.isPending ||
+    refreshMutation.isPending
   const isRefreshing = refreshMutation.isPending
 
   return (
@@ -243,7 +239,7 @@ function DashboardPage(): React.JSX.Element {
               />
             </label>
 
-            <Button variant="secondary" className="h-9" onPress={() => void refreshSkillsWithFeedback()} isDisabled={busy} isPending={isRefreshing}>
+            <Button variant="secondary" className="h-9" onPress={() => refreshMutation.mutate()} isDisabled={busy} isPending={isRefreshing}>
               {({ isPending }) => (
                 <span className="inline-flex items-center gap-1.5">
                   {isPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
@@ -287,12 +283,13 @@ function DashboardPage(): React.JSX.Element {
         skill={selectedSkill}
         hasUpdate={selectedSkill ? skillsWithUpdates.has(selectedSkill.name) : false}
         busy={busy}
+        isUpdating={updateMutation.isPending && updateMutation.variables === selectedSkill?.name}
         onToggleAgent={toggleAgent}
-        onOpenFolder={openStorageFolder}
-        onUpdate={updateSkill}
-        onStartDebug={startDebug}
-        onStopDebug={stopDebug}
-        onRemove={removeAll}
+        onOpenFolder={openStorageFolderMutation.mutate}
+        onUpdate={updateMutation.mutate}
+        onStartDebug={startDebugMutation.mutate}
+        onStopDebug={stopDebugMutation.mutate}
+        onRemove={removeSkillMutation.mutate}
         onCopy={copyValue}
       />
     </section>
@@ -382,6 +379,7 @@ function SkillInspector({
   skill,
   hasUpdate,
   busy,
+  isUpdating,
   onToggleAgent,
   onOpenFolder,
   onUpdate,
@@ -393,12 +391,13 @@ function SkillInspector({
   skill: InstalledSkill | null
   hasUpdate: boolean
   busy: boolean
+  isUpdating: boolean
   onToggleAgent: (skill: InstalledSkill, agent: AgentId) => void
-  onOpenFolder: (skill: InstalledSkill) => void
-  onUpdate: (skill: InstalledSkill) => void
-  onStartDebug: (skill: InstalledSkill) => void
-  onStopDebug: (skill: InstalledSkill) => void
-  onRemove: (skill: InstalledSkill) => void
+  onOpenFolder: (skillName: string) => void
+  onUpdate: (skillName: string) => void
+  onStartDebug: (skillName: string) => void
+  onStopDebug: (skillName: string) => void
+  onRemove: (skillName: string) => void
   onCopy: (label: string, value: string) => Promise<void>
 }): React.JSX.Element {
   if (!skill) {
@@ -446,7 +445,7 @@ function SkillInspector({
             label={displayedPathLabel}
             value={shortenPath(displayedPath)}
             titleValue={displayedPath}
-            onOpen={() => onOpenFolder(skill)}
+            onOpen={() => onOpenFolder(skill.name)}
             isActionDisabled={busy}
             isMono
           />
@@ -479,17 +478,19 @@ function SkillInspector({
         <h3 className="text-xs font-semibold text-foreground">操作</h3>
         <div className={cn('mt-3 grid gap-2', hasUpdate ? 'grid-cols-3' : 'grid-cols-2')}>
           {hasUpdate && (
-            <Button variant="outline" className="h-9 w-full rounded-md" onPress={() => onUpdate(skill)} isDisabled={busy}>
-              <span className="inline-flex w-full items-center justify-center gap-1.5">
-                <RiRefreshLine size={16} />
-                更新
-              </span>
+            <Button variant="outline" className="h-9 w-full rounded-md" onPress={() => onUpdate(skill.name)} isDisabled={busy} isPending={isUpdating}>
+              {({ isPending: buttonIsPending }) => (
+                <span className="inline-flex w-full items-center justify-center gap-1.5">
+                  {buttonIsPending ? <Spinner color="current" size="sm" /> : <RiRefreshLine size={16} />}
+                  {buttonIsPending ? '更新中' : '更新'}
+                </span>
+              )}
             </Button>
           )}
           <Button
             variant="outline"
             className="h-9 w-full rounded-md"
-            onPress={() => (skill.debugPath ? onStopDebug(skill) : onStartDebug(skill))}
+            onPress={() => (skill.debugPath ? onStopDebug(skill.name) : onStartDebug(skill.name))}
             isDisabled={busy || skill.agents.length === 0}
           >
             <span className="inline-flex w-full items-center justify-center gap-1.5">
@@ -500,7 +501,7 @@ function SkillInspector({
           <button
             type="button"
             className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-danger/35 bg-transparent px-3 text-sm font-medium text-danger-soft-foreground/90 transition-colors hover:border-danger/60 hover:bg-danger-soft/20 disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => onRemove(skill)}
+            onClick={() => onRemove(skill.name)}
             disabled={busy}
           >
             <RiDeleteBinLine size={16} />
