@@ -46,6 +46,7 @@ function InstallPage(): React.JSX.Element {
 
   const selectedPreviewItems = previews.filter((skill) => selectedPreviews.includes(skill.skillPath) && !skill.installState)
   const trimmedSource = source.trim()
+  const isInsecureGitLabSource = /^http:\/\//i.test(trimmedSource)
   const hasPreviewedSource = previewedSource === trimmedSource
 
   async function run(label: string, action: () => Promise<OperationResult | void>): Promise<void> {
@@ -176,6 +177,11 @@ function InstallPage(): React.JSX.Element {
           <InstallMetric label="找到" value={foundCount} />
           <InstallMetric label="可安装" value={installableCount} isSuccess />
         </div>
+        {isInsecureGitLabSource && (
+          <p className="mt-3 text-xs leading-5 text-warning-soft-foreground">
+            当前 GitLab 使用未加密的 HTTP 连接，访问 Token 和仓库内容可能被网络中的其他设备读取。
+          </p>
+        )}
       </section>
 
       <div className="mt-5 grid min-h-0 flex-1 items-stretch gap-5 overflow-clip xl:grid-cols-[minmax(0,1fr)_320px]">

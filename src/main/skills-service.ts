@@ -732,7 +732,7 @@ export class SkillsService {
     let page = 1
 
     while (true) {
-      const url = new URL(`https://${source.host}/api/v4/projects/${encodeURIComponent(source.projectPath!)}/repository/tree`)
+      const url = new URL(`${getGitLabOrigin(source)}/api/v4/projects/${encodeURIComponent(source.projectPath!)}/repository/tree`)
       url.searchParams.set('recursive', 'true')
       url.searchParams.set('per_page', '100')
       url.searchParams.set('page', String(page))
@@ -756,7 +756,7 @@ export class SkillsService {
   }
 
   private async fetchGitLabDefaultRef(source: SourceInfo): Promise<string> {
-    const response = await fetch(`https://${source.host}/api/v4/projects/${encodeURIComponent(source.projectPath!)}`, {
+    const response = await fetch(`${getGitLabOrigin(source)}/api/v4/projects/${encodeURIComponent(source.projectPath!)}`, {
       headers: await this.getGitLabHeaders(source.host!),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     })
@@ -880,7 +880,7 @@ export class SkillsService {
   private async fetchRawFile(source: SourceInfo, path: string): Promise<Buffer> {
     if (source.provider === 'gitlab') {
       const url = new URL(
-        `https://${source.host}/api/v4/projects/${encodeURIComponent(source.projectPath!)}/repository/files/${encodeURIComponent(path)}/raw`
+        `${getGitLabOrigin(source)}/api/v4/projects/${encodeURIComponent(source.projectPath!)}/repository/files/${encodeURIComponent(path)}/raw`
       )
       url.searchParams.set('ref', source.ref!)
 
@@ -1107,16 +1107,20 @@ function getUpdateSourceKey(source: SourceInfo): string {
   return JSON.stringify(['gitlab', source.host?.toLowerCase(), source.projectPath?.toLowerCase(), source.ref || '', normalizeSubpath(source.subpath)])
 }
 
+function getGitLabOrigin(source: SourceInfo): string {
+  return new URL(source.repositoryUrl!).origin
+}
+
 function resolveGitLabSource(input: string): SourceInfo {
   let url: URL
   try {
     url = new URL(input)
   } catch {
-    throw new Error('Use owner/repo for GitHub or an HTTPS GitLab URL, such as https://gitlab.example.com/group/repo.')
+    throw new Error('Use owner/repo for GitHub or an HTTP/HTTPS GitLab URL, such as https://gitlab.example.com/group/repo.')
   }
 
-  if (url.protocol !== 'https:' || url.hostname === 'github.com') {
-    throw new Error('Use owner/repo for GitHub or an HTTPS GitLab URL, such as https://gitlab.example.com/group/repo.')
+  if (!['http:', 'https:'].includes(url.protocol) || url.hostname === 'github.com') {
+    throw new Error('Use owner/repo for GitHub or an HTTP/HTTPS GitLab URL, such as https://gitlab.example.com/group/repo.')
   }
 
   const parts = url.pathname
@@ -1133,7 +1137,7 @@ function resolveGitLabSource(input: string): SourceInfo {
 
   const ref = treeParts[0]
   const subpath = treeParts.slice(1).join('/') || undefined
-  const repositoryUrl = `https://${url.host}/${projectPath}`
+  const repositoryUrl = `${url.origin}/${projectPath}`
   return { provider: 'gitlab', repositoryUrl, host: url.host, projectPath, ref, subpath }
 }
 
