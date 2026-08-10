@@ -141,6 +141,7 @@ export class SkillsService {
           name: skill.name,
           description: metadata.description,
           storagePath: skill.storagePath,
+          sourcePath: getLocalSkillSourcePath(skill),
           agents: skill.agents,
           source: skill.source,
           provider: skill.provider,
@@ -500,6 +501,17 @@ export class SkillsService {
 
     const error = await shell.openPath(entry.debugPath || entry.storagePath)
     return error ? { ok: false, logs: [`Unable to open ${name}: ${error}`] } : { ok: true, logs: [] }
+  }
+
+  async openSourceFolder(name: string): Promise<OperationResult> {
+    const entry = (await this.readLock()).skills[sanitizeName(name)]
+    if (!entry) return { ok: false, logs: [`Unable to open ${name}: not installed by this app.`] }
+
+    const sourcePath = getLocalSkillSourcePath(entry)
+    if (!sourcePath) return { ok: false, logs: [`Unable to open ${name}: source is not local.`] }
+
+    const error = await shell.openPath(sourcePath)
+    return error ? { ok: false, logs: [`Unable to open ${sourcePath}: ${error}`] } : { ok: true, logs: [] }
   }
 
   async openSettingsFolder(target: SettingsFolderTarget, agentId?: AgentId): Promise<OperationResult> {
@@ -1151,6 +1163,13 @@ function getLockEntrySource(entry: LockEntry): SourceInfo {
     repo: entry.repo,
     ref: entry.ref
   }
+}
+
+function getLocalSkillSourcePath(entry: LockEntry): string | undefined {
+  if (entry.provider !== 'local' || !entry.localPath) return undefined
+
+  const skillDir = dirname(entry.skillPath)
+  return skillDir === '.' ? entry.localPath : join(entry.localPath, skillDir)
 }
 
 async function validateDebugSkillPath(entry: LockEntry, debugPath: string): Promise<void> {

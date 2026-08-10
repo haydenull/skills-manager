@@ -23,6 +23,7 @@ export type InstalledSkill = {
   name: string
   description: string
   storagePath: string
+  sourcePath?: string
   agents: AgentId[]
   source?: string
   provider?: 'github' | 'gitlab' | 'local'

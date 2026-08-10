@@ -29,6 +29,7 @@ const api = {
     startDebug: (name: string) => ipcRenderer.invoke('skills:start-debug', name),
     stopDebug: (name: string) => ipcRenderer.invoke('skills:stop-debug', name),
     openStorageFolder: (name: string) => ipcRenderer.invoke('skills:open-storage-folder', name),
+    openSourceFolder: (name: string) => ipcRenderer.invoke('skills:open-source-folder', name),
     openSettingsFolder: (target: SettingsFolderTarget, agentId?: AgentId) => ipcRenderer.invoke('skills:open-settings-folder', target, agentId)
   }
 }

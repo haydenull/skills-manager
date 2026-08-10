@@ -35,6 +35,7 @@ type SkillsApi = {
   startDebug: (name: string) => Promise<OperationResult>
   stopDebug: (name: string) => Promise<OperationResult>
   openStorageFolder: (name: string) => Promise<OperationResult>
+  openSourceFolder: (name: string) => Promise<OperationResult>
   openSettingsFolder: (target: SettingsFolderTarget, agentId?: AgentId) => Promise<OperationResult>
 }
 

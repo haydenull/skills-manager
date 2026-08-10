@@ -158,6 +158,7 @@ app.whenReady().then(() => {
   ipcMain.handle('skills:start-debug', (_event, name: string) => skillsService.startDebug(name))
   ipcMain.handle('skills:stop-debug', (_event, name: string) => skillsService.stopDebug(name))
   ipcMain.handle('skills:open-storage-folder', (_event, name: string) => skillsService.openStorageFolder(name))
+  ipcMain.handle('skills:open-source-folder', (_event, name: string) => skillsService.openSourceFolder(name))
   ipcMain.handle('skills:open-settings-folder', (_event, target, agentId) => skillsService.openSettingsFolder(target, agentId))
   ipcMain.handle('app:get-info', () => ({ version: app.getVersion(), platform: process.platform }))
   ipcMain.handle('app:check-for-updates', () => checkForAppUpdates())

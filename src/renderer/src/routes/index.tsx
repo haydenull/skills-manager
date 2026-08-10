@@ -147,6 +147,10 @@ function DashboardPage(): React.JSX.Element {
     mutationFn: (skillName: string) => executeSkillOperation(() => window.api.skills.openStorageFolder(skillName))
   })
 
+  const openSourceFolderMutation = useMutation({
+    mutationFn: (skillName: string) => executeSkillOperation(() => window.api.skills.openSourceFolder(skillName))
+  })
+
   const refreshMutation = useMutation({
     mutationFn: async () => {
       const installedResult = await refetchInstalledSkills()
@@ -191,6 +195,7 @@ function DashboardPage(): React.JSX.Element {
     startDebugMutation.isPending ||
     stopDebugMutation.isPending ||
     openStorageFolderMutation.isPending ||
+    openSourceFolderMutation.isPending ||
     refreshMutation.isPending
   const isRefreshing = refreshMutation.isPending
 
@@ -286,7 +291,8 @@ function DashboardPage(): React.JSX.Element {
         busy={busy}
         isUpdating={updateMutation.isPending && updateMutation.variables === selectedSkill?.name}
         onToggleAgent={toggleAgent}
-        onOpenFolder={openStorageFolderMutation.mutate}
+        onOpenStorageFolder={openStorageFolderMutation.mutate}
+        onOpenSourceFolder={openSourceFolderMutation.mutate}
         onUpdate={updateMutation.mutate}
         onStartDebug={startDebugMutation.mutate}
         onStopDebug={stopDebugMutation.mutate}
@@ -382,7 +388,8 @@ function SkillInspector({
   busy,
   isUpdating,
   onToggleAgent,
-  onOpenFolder,
+  onOpenStorageFolder,
+  onOpenSourceFolder,
   onUpdate,
   onStartDebug,
   onStopDebug,
@@ -394,7 +401,8 @@ function SkillInspector({
   busy: boolean
   isUpdating: boolean
   onToggleAgent: (skill: InstalledSkill, agent: AgentId) => void
-  onOpenFolder: (skillName: string) => void
+  onOpenStorageFolder: (skillName: string) => void
+  onOpenSourceFolder: (skillName: string) => void
   onUpdate: (skillName: string) => void
   onStartDebug: (skillName: string) => void
   onStopDebug: (skillName: string) => void
@@ -413,7 +421,7 @@ function SkillInspector({
   }
 
   const displayedPath = skill.debugPath || skill.storagePath
-  const displayedPathLabel = skill.debugPath ? '调试路径' : '本地路径'
+  const displayedPathLabel = skill.debugPath ? '调试路径' : '安装路径'
 
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-surface/80">
@@ -441,12 +449,27 @@ function SkillInspector({
 
         <InspectorSection title="基础信息">
           <DetailRow label="来源" value={getProviderLabel(skill.provider)} />
-          <DetailRow label="仓库" value={skill.source ? getRepositoryName(skill.source) : '-'} href={getRepositoryUrl(skill)} />
+          {skill.provider === 'local' ? (
+            <DetailRow
+              label="来源路径"
+              value={skill.sourcePath ? shortenPath(skill.sourcePath) : '-'}
+              copyValue={skill.sourcePath}
+              titleValue={skill.sourcePath}
+              onCopy={onCopy}
+              onOpen={skill.sourcePath ? () => onOpenSourceFolder(skill.name) : undefined}
+              isActionDisabled={busy}
+              isMono
+            />
+          ) : (
+            <DetailRow label="仓库" value={skill.source ? getRepositoryName(skill.source) : '-'} href={getRepositoryUrl(skill)} />
+          )}
           <DetailRow
             label={displayedPathLabel}
             value={shortenPath(displayedPath)}
+            copyValue={displayedPath}
             titleValue={displayedPath}
-            onOpen={() => onOpenFolder(skill.name)}
+            onCopy={onCopy}
+            onOpen={() => onOpenStorageFolder(skill.name)}
             isActionDisabled={busy}
             isMono
           />
@@ -576,45 +599,47 @@ function DetailRow({
           </span>
         </a>
       ) : (
-        <div className="grid w-52 shrink-0 grid-cols-[minmax(0,1fr)_1.5rem] items-center gap-2">
+        <div className="grid w-52 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <span
             className={cn('min-w-0 truncate text-left text-sm leading-6 text-foreground', isMono && 'font-mono text-xs')}
             title={titleValue ?? copyValue ?? value}
           >
             {value}
           </span>
-          {onOpen ? (
-            <Tooltip>
-              <Tooltip.Trigger className="inline-flex">
-                <button
-                  type="button"
-                  aria-label={`打开${label}`}
-                  className="inline-flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={onOpen}
-                  disabled={isActionDisabled}
-                >
-                  <RiFolderOpenLine size={15} />
-                </button>
-              </Tooltip.Trigger>
-              <Tooltip.Content>打开{label}</Tooltip.Content>
-            </Tooltip>
-          ) : copyValue && onCopy ? (
-            <Tooltip>
-              <Tooltip.Trigger className="inline-flex">
-                <button
-                  type="button"
-                  aria-label={`复制${label}`}
-                  className="inline-flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
-                  onClick={() => void onCopy(label, copyValue)}
-                >
-                  <RiFileCopyLine size={15} />
-                </button>
-              </Tooltip.Trigger>
-              <Tooltip.Content>复制{label}</Tooltip.Content>
-            </Tooltip>
-          ) : (
-            <span className="size-6" aria-hidden="true" />
-          )}
+          <div className="flex items-center">
+            {copyValue && onCopy && (
+              <Tooltip>
+                <Tooltip.Trigger className="inline-flex">
+                  <button
+                    type="button"
+                    aria-label={`复制${label}`}
+                    className="inline-flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+                    onClick={() => void onCopy(label, copyValue)}
+                  >
+                    <RiFileCopyLine size={15} />
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Content>复制{label}</Tooltip.Content>
+              </Tooltip>
+            )}
+            {onOpen && (
+              <Tooltip>
+                <Tooltip.Trigger className="inline-flex">
+                  <button
+                    type="button"
+                    aria-label={`打开${label}`}
+                    className="inline-flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={onOpen}
+                    disabled={isActionDisabled}
+                  >
+                    <RiFolderOpenLine size={15} />
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Content>打开{label}</Tooltip.Content>
+              </Tooltip>
+            )}
+            {!onOpen && !(copyValue && onCopy) && <span className="size-6" aria-hidden="true" />}
+          </div>
         </div>
       )}
     </div>
