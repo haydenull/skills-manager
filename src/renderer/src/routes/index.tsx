@@ -6,6 +6,7 @@ import { useState } from 'react'
 import {
   RiBookOpenLine,
   RiClaudeLine,
+  RiCodeBoxLine,
   RiDeleteBinLine,
   RiExternalLinkLine,
   RiFileCopyLine,
@@ -34,8 +35,15 @@ export const Route = createFileRoute('/')({
 
 const AGENT_OPTIONS = [
   { id: 'claude-code', label: 'Claude Code', shortLabel: 'Claude', icon: RiClaudeLine },
-  { id: 'codex', label: 'Codex', shortLabel: 'Codex', icon: RiOpenaiLine }
+  { id: 'codex', label: 'Codex', shortLabel: 'Codex', icon: RiOpenaiLine },
+  { id: 'opencode', label: 'OpenCode', shortLabel: 'OpenCode', icon: RiCodeBoxLine }
 ] satisfies Array<{ id: AgentId; label: string; shortLabel: string; icon: typeof RiRobotLine }>
+
+const AGENT_BADGE_CLASS: Record<AgentId, string> = {
+  'claude-code': 'border-accent/40 bg-accent-soft text-accent-soft-foreground',
+  codex: 'border-success/40 bg-success-soft text-success-soft-foreground',
+  opencode: 'border-warning/40 bg-warning-soft text-warning-soft-foreground'
+}
 
 type SkillStatusFilter = 'all' | 'updates' | 'debug'
 
@@ -347,15 +355,7 @@ function AgentBadges({ agents }: { agents: AgentId[] }): React.JSX.Element {
   return (
     <div className="flex flex-wrap gap-1.5 min-[1180px]:justify-self-start">
       {installedAgents.map((agent) => (
-        <span
-          key={agent.id}
-          className={cn(
-            'rounded-md border px-2 py-0.5 text-xs font-medium',
-            agent.id === 'codex'
-              ? 'border-success/40 bg-success-soft text-success-soft-foreground'
-              : 'border-accent/40 bg-accent-soft text-accent-soft-foreground'
-          )}
-        >
+        <span key={agent.id} className={cn('rounded-md border px-2 py-0.5 text-xs font-medium', AGENT_BADGE_CLASS[agent.id])}>
           {agent.shortLabel}
         </span>
       ))}

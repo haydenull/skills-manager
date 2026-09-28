@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-skills-manager is a desktop Skills management tool for installing, updating, debugging, and removing local skills used by Claude Code and Codex.
+skills-manager is a desktop Skills management tool for installing, updating, debugging, and removing local skills used by Claude Code, Codex, and OpenCode.
 
 ## Features
 
@@ -47,7 +47,7 @@ The app stores tokens per host and uses them when calling the corresponding GitL
 2. Enter the skill source in the input field.
 3. Click **Preview** to see available skills.
 4. Select the skills you want to install.
-5. Choose the target agent: Claude Code, Codex, or both.
+5. Choose the target agent: Claude Code, Codex, OpenCode, or any combination.
 6. Click **Install**.
 
 Supported source formats:
@@ -65,7 +65,7 @@ A local directory can be either a single skill directory or a collection directo
 The **Installed Skills** page lists all skills managed by this app. Available actions:
 
 - Refresh the list and check for updates
-- Add a skill to Claude Code or Codex
+- Add a skill to Claude Code, Codex, or OpenCode
 - Remove a skill from an agent
 - Update skills with a new version available
 - Enter or exit debug mode
@@ -78,7 +78,7 @@ The **Updatable** badge indicates that new content is available from the skill's
 
 Click the debug button on the **Installed Skills** page. The app will prompt you to select a local skill directory. The directory must contain a `SKILL.md` whose declared skill name matches the current skill.
 
-Once in debug mode, the app redirects the skill's entry point in Claude Code or Codex to the selected local directory. Skills in debug mode show a **Debugging** badge and display the current debug directory below the source info.
+Once in debug mode, the app redirects the skill's entry point in Claude Code, Codex, or OpenCode to the selected local directory. Skills in debug mode show a **Debugging** badge and display the current debug directory below the source info.
 
 Exiting debug mode restores the skill to the version stored in the app.
 
@@ -92,16 +92,19 @@ On the **Settings** page you can:
 - Open the app data directory
 - Open the Claude Code skills directory
 - Open the Codex skills directory
+- Open the OpenCode skills directory
 
 Default directories:
 
 - Claude Code skills: `~/.claude/skills`
 - Codex skills: `~/.codex/skills`
+- OpenCode skills: `~/.config/opencode/skills`
 
 Override defaults with environment variables:
 
 - `CLAUDE_CONFIG_DIR`: overrides the Claude Code config directory
 - `CODEX_HOME`: overrides the Codex config directory
+- `XDG_CONFIG_HOME`: overrides the OpenCode config parent directory (`$XDG_CONFIG_HOME/opencode`)
 
 ## Development
 

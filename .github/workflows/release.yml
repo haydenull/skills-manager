@@ -252,7 +252,7 @@ jobs:
 
               url "https://github.com/haydenull/skills-manager/releases/download/v\#{version}/skills-manager-\#{version}-\#{arch}.dmg"
               name "Skills Manager"
-              desc "Desktop skills manager for Claude Code and Codex"
+              desc "Desktop skills manager for Claude Code, Codex, and OpenCode"
               homepage "https://github.com/haydenull/skills-manager"
 
               depends_on macos: ">= :monterey"

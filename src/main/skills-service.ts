@@ -96,6 +96,10 @@ const AGENTS: Record<AgentId, { displayName: string; dir: () => string }> = {
   codex: {
     displayName: 'Codex',
     dir: () => join(getAgentConfigDir('codex'), 'skills')
+  },
+  opencode: {
+    displayName: 'OpenCode',
+    dir: () => join(getAgentConfigDir('opencode'), 'skills')
   }
 }
 
@@ -107,7 +111,8 @@ const PRIORITY_PREFIXES = [
   'skills/.system/',
   '.agents/skills/',
   '.claude/skills/',
-  '.codex/skills/'
+  '.codex/skills/',
+  '.opencode/skills/'
 ]
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__'])
@@ -118,14 +123,20 @@ const execFileAsync = promisify(execFile)
 
 function getAgentConfigDir(agent: AgentId): string {
   if (process.env.SKILLS_MANAGER_LOCAL_DEBUG === '1') {
-    return join(process.cwd(), '.debug', agent === 'claude-code' ? 'claude' : 'codex')
+    const debugDirName = agent === 'claude-code' ? 'claude' : agent
+    return join(process.cwd(), '.debug', debugDirName)
   }
 
   if (agent === 'claude-code') {
     return process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
   }
 
-  return process.env.CODEX_HOME?.trim() || join(homedir(), '.codex')
+  if (agent === 'codex') {
+    return process.env.CODEX_HOME?.trim() || join(homedir(), '.codex')
+  }
+
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim()
+  return join(xdgConfigHome || join(homedir(), '.config'), 'opencode')
 }
 
 export class SkillsService {

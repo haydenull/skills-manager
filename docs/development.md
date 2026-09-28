@@ -33,6 +33,6 @@ pnpm build:mac    # Package for macOS
 pnpm build:win    # Package for Windows on Windows runners
 ```
 
-In development mode, the app uses the `.debug/` directory in the repository as an isolated local environment and does not modify your real Claude Code or Codex skills directories.
+In development mode, the app uses the `.debug/` directory in the repository as an isolated local environment and does not modify your real Claude Code, Codex, or OpenCode skills directories.
 
 Release builds are created by the GitHub Actions release workflow. Windows distributables are built on `windows-latest`.

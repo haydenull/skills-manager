@@ -1,7 +1,7 @@
 {
   "name": "skills-manager",
   "version": "1.1.7",
-  "description": "Desktop skills manager for Claude Code and Codex",
+  "description": "Desktop skills manager for Claude Code, Codex, and OpenCode",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.7.0",
   "author": "",

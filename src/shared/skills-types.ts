@@ -1,4 +1,4 @@
-export type AgentId = 'claude-code' | 'codex'
+export type AgentId = 'claude-code' | 'codex' | 'opencode'
 export type SettingsFolderTarget = 'app-data' | 'agent-skills'
 
 export type AppInfo = {

@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更新、调试和移除 Claude Code 与 Codex 使用的本地 skills。
+skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更新、调试和移除 Claude Code、Codex 与 OpenCode 使用的本地 skills。
 
 ## 功能
 
@@ -47,7 +47,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 2. 在来源输入框中填写 Skill 来源。
 3. 点击"预览"，查看可安装的 skills。
 4. 勾选要安装的 Skill。
-5. 选择要安装到的目标 Agent：Claude Code、Codex，或两者都选。
+5. 选择要安装到的目标 Agent：Claude Code、Codex、OpenCode，可多选。
 6. 点击"安装"完成安装。
 
 支持的来源格式：
@@ -65,7 +65,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 在"已安装 Skill"页面可以查看由本应用管理的 skills，并执行以下操作：
 
 - 刷新列表和更新状态
-- 将某个 Skill 添加到 Claude Code 或 Codex
+- 将某个 Skill 添加到 Claude Code、Codex 或 OpenCode
 - 从某个 Agent 移除 Skill
 - 更新有新版本的 Skill
 - 进入或退出调试模式
@@ -78,7 +78,7 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 
 在"已安装 Skill"页面点击调试按钮后，应用会要求选择一个本地 Skill 目录。该目录必须包含 `SKILL.md`，并且其中声明的 Skill 名称需要与当前 Skill 一致。
 
-进入调试后，应用会把该 Skill 在 Claude Code 或 Codex 中的入口切换到所选本地目录。处于调试中的 Skill 会显示"调试中"标记，并在来源信息下显示当前调试目录。
+进入调试后，应用会把该 Skill 在 Claude Code、Codex 或 OpenCode 中的入口切换到所选本地目录。处于调试中的 Skill 会显示"调试中"标记，并在来源信息下显示当前调试目录。
 
 退出调试后，应用会恢复到应用存储中的正式版本。
 
@@ -92,16 +92,19 @@ skills-manager 是一个桌面端 Skills 管理工具，用于统一安装、更
 - 打开应用数据目录
 - 打开 Claude Code skills 目录
 - 打开 Codex skills 目录
+- 打开 OpenCode skills 目录
 
 默认目录：
 
 - Claude Code skills：`~/.claude/skills`
 - Codex skills：`~/.codex/skills`
+- OpenCode skills：`~/.config/opencode/skills`
 
 也可以通过环境变量覆盖默认目录：
 
 - `CLAUDE_CONFIG_DIR`：覆盖 Claude Code 配置目录
 - `CODEX_HOME`：覆盖 Codex 配置目录
+- `XDG_CONFIG_HOME`：覆盖 OpenCode 配置父目录（`$XDG_CONFIG_HOME/opencode`）
 
 ## 开发
 

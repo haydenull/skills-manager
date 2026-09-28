@@ -33,6 +33,6 @@ pnpm build:mac    # 打包 macOS 应用
 pnpm build:win    # 在 Windows runner 上打包 Windows 应用
 ```
 
-开发模式会使用仓库内的 `.debug/` 目录作为本地开发隔离环境，不会直接改动真实的 Claude Code 或 Codex skills 目录。
+开发模式会使用仓库内的 `.debug/` 目录作为本地开发隔离环境，不会直接改动真实的 Claude Code、Codex 或 OpenCode skills 目录。
 
 发布安装包由 GitHub Actions 的 release workflow 构建，其中 Windows 分发包会在 `windows-latest` 上生成。

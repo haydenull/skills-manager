@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Checkbox, CheckboxGroup, Spinner } from '@heroui/react'
 import { toast } from '@heroui/react/toast'
-import { RiCheckLine, RiClaudeLine, RiDownloadLine, RiInboxLine, RiOpenaiLine, RiRobotLine, RiSearchLine } from '@remixicon/react'
+import { RiCheckLine, RiClaudeLine, RiCodeBoxLine, RiDownloadLine, RiInboxLine, RiOpenaiLine, RiRobotLine, RiSearchLine } from '@remixicon/react'
 import type { AgentId, InstallRequest, OperationResult, SkillPreview } from '../../../shared/skills-types'
 import { cn } from '../lib/cn'
 import { executeIpcOperation, IpcOperationError } from '../lib/execute-ipc-operation'
@@ -15,7 +15,8 @@ export const Route = createFileRoute('/install')({
 
 const AGENT_OPTIONS = [
   { id: 'claude-code', label: 'Claude Code', icon: RiClaudeLine },
-  { id: 'codex', label: 'Codex', icon: RiOpenaiLine }
+  { id: 'codex', label: 'Codex', icon: RiOpenaiLine },
+  { id: 'opencode', label: 'OpenCode', icon: RiCodeBoxLine }
 ] satisfies Array<{ id: AgentId; label: string; icon: typeof RiRobotLine }>
 
 function InstallPage(): React.JSX.Element {
